@@ -1,12 +1,48 @@
 export type Timeframe = "4h" | "1d";
 export type Trend = "bullish" | "bearish" | "neutral";
 export type VolumeStatus = "high" | "normal" | "low";
+export type MarketType = "spot" | "futures";
+export type TradeSide = "long" | "short" | null;
+export type Verdict = "enter" | "wait" | "avoid";
+
+export type StrategyType =
+  | "trend_pullback"
+  | "breakout_retest"
+  | "ema_crossover"
+  | "rsi_divergence";
+
+export interface StrategyChecklistItem {
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface StrategyInfo {
+  type: StrategyType;
+  label: string;
+  description: string;
+  confidence: number;
+  checklist: StrategyChecklistItem[];
+}
+
+export interface VerdictInfo {
+  verdict: Verdict;
+  verdictLabel: string;
+  side: TradeSide;
+  headline: string;
+  reason: string;
+  rrNow: number;
+  rrIdeal: number;
+  entryZone: [number, number];
+  invalidation: number;
+}
 
 export interface AnalyzePayload {
   symbol: string;
   capital: number;
   riskPercent: number;
   interval: Timeframe;
+  marketType: MarketType;
 }
 
 export interface AnalyzeIndicators {
@@ -30,15 +66,40 @@ export interface AnalyzeRisk {
 export interface AnalyzeResponse {
   symbol: string;
   interval: string;
+  marketType: MarketType;
   currentPrice: number;
   trend: Trend;
   indicators: AnalyzeIndicators;
   risk: AnalyzeRisk;
+  strategy: StrategyInfo;
+  verdict: VerdictInfo;
   analysis: string;
 }
 
 export interface ApiErrorResponse {
   error: string;
+}
+
+export interface ScreenerCoin {
+  symbol: string;
+  currentPrice: number;
+  priceChangePercent: number;
+  trend: Trend;
+  verdict: Verdict;
+  verdictLabel: string;
+  side: TradeSide;
+  reason: string;
+  rrIdeal: number;
+  rsi: number;
+  strategy: StrategyInfo;
+}
+
+export interface ScreenerResponse {
+  scanned: number;
+  interval: string;
+  marketType: MarketType;
+  updatedAt: string;
+  coins: ScreenerCoin[];
 }
 
 export class ApiError extends Error {
@@ -64,6 +125,7 @@ export async function analyzeSymbol(
       capital: payload.capital,
       riskPercent: payload.riskPercent,
       interval: payload.interval,
+      marketType: payload.marketType,
     }),
   });
 
@@ -76,4 +138,26 @@ export async function analyzeSymbol(
   }
 
   return data as AnalyzeResponse;
+}
+
+export async function fetchMarketScreener(
+  marketType: MarketType = "spot",
+  interval: Timeframe = "4h",
+  limit: number = 12,
+): Promise<ScreenerResponse> {
+  const params = new URLSearchParams({
+    interval,
+    limit: String(limit),
+    marketType,
+  });
+
+  const response = await fetch(`${API_URL}/api/screener?${params.toString()}`);
+  const data = (await response.json()) as ScreenerResponse | ApiErrorResponse;
+
+  if (!response.ok) {
+    const message = "error" in data ? data.error : "Screener yuklanmadi";
+    throw new ApiError(message, response.status);
+  }
+
+  return data as ScreenerResponse;
 }

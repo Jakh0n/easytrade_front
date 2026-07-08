@@ -8,6 +8,8 @@ export interface Candle {
   closeTime: number;
 }
 
+export type MarketType = "spot" | "futures";
+
 type BinanceKlineRaw = [
   number,
   string,
@@ -19,10 +21,17 @@ type BinanceKlineRaw = [
   ...unknown[],
 ];
 
+function getKlinesUrl(marketType: MarketType): string {
+  return marketType === "futures"
+    ? "https://fapi.binance.com/fapi/v1/klines"
+    : "https://api.binance.com/api/v3/klines";
+}
+
 export async function fetchKlines(
   symbol: string,
   interval: string,
   limit: number = 300,
+  marketType: MarketType = "spot",
 ): Promise<Candle[]> {
   const params = new URLSearchParams({
     symbol: symbol.toUpperCase(),
@@ -30,9 +39,7 @@ export async function fetchKlines(
     limit: String(limit),
   });
 
-  const response = await fetch(
-    `https://api.binance.com/api/v3/klines?${params.toString()}`,
-  );
+  const response = await fetch(`${getKlinesUrl(marketType)}?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error("Grafik ma'lumotlarini yuklab bo'lmadi");

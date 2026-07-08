@@ -12,15 +12,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AnalyzePayload, Timeframe } from "@/lib/api";
+import type { AnalyzePayload, MarketType, Timeframe } from "@/lib/api";
+
+const POPULAR_COINS = [
+  { label: "BTC", symbol: "BTCUSDT" },
+  { label: "ETH", symbol: "ETHUSDT" },
+  { label: "SOL", symbol: "SOLUSDT" },
+  { label: "BNB", symbol: "BNBUSDT" },
+] as const;
 
 interface AnalyzeFormProps {
   loading: boolean;
+  symbol: string;
+  marketType: MarketType;
+  onSymbolChange: (symbol: string) => void;
+  onMarketTypeChange: (marketType: MarketType) => void;
   onAnalyze: (payload: AnalyzePayload) => void;
 }
 
-export function AnalyzeForm({ loading, onAnalyze }: AnalyzeFormProps) {
-  const [symbol, setSymbol] = useState("BTCUSDT");
+export function AnalyzeForm({
+  loading,
+  symbol,
+  marketType,
+  onSymbolChange,
+  onMarketTypeChange,
+  onAnalyze,
+}: AnalyzeFormProps) {
   const [interval, setInterval] = useState<Timeframe>("4h");
   const [capital, setCapital] = useState("10000");
   const [riskPercent, setRiskPercent] = useState("2");
@@ -40,6 +57,7 @@ export function AnalyzeForm({ loading, onAnalyze }: AnalyzeFormProps) {
       interval,
       capital: parsedCapital,
       riskPercent: parsedRisk,
+      marketType,
     });
   };
 
@@ -53,9 +71,45 @@ export function AnalyzeForm({ loading, onAnalyze }: AnalyzeFormProps) {
         <p className="text-sm text-muted-foreground">
           Coin, timeframe va risk parametrlarini kiriting
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="mr-1 self-center text-xs text-muted-foreground">
+            Tezkor:
+          </span>
+          {POPULAR_COINS.map((coin) => (
+            <Button
+              key={coin.symbol}
+              type="button"
+              variant={symbol === coin.symbol ? "default" : "outline"}
+              size="sm"
+              disabled={loading}
+              onClick={() => onSymbolChange(coin.symbol)}
+            >
+              {coin.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="space-y-1.5">
+          <label htmlFor="marketType" className="text-sm font-medium">
+            Bozor turi
+          </label>
+          <Select
+            value={marketType}
+            onValueChange={(value) => onMarketTypeChange(value as MarketType)}
+            disabled={loading}
+          >
+            <SelectTrigger id="marketType" className="w-full">
+              <SelectValue placeholder="Bozor tanlang" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="spot">Spot (long)</SelectItem>
+              <SelectItem value="futures">Futures (long/short)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-1.5">
           <label htmlFor="symbol" className="text-sm font-medium">
             Coin symbol
@@ -63,7 +117,7 @@ export function AnalyzeForm({ loading, onAnalyze }: AnalyzeFormProps) {
           <Input
             id="symbol"
             value={symbol}
-            onChange={(event) => setSymbol(event.target.value.toUpperCase())}
+            onChange={(event) => onSymbolChange(event.target.value.toUpperCase())}
             placeholder="BTCUSDT"
             disabled={loading}
             required
