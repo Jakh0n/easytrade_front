@@ -5,23 +5,27 @@ import {
   CrosshairMode,
   LineStyle,
   CandlestickSeries,
+  HistogramSeries,
   LineSeries,
   createChart,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchKlines, type MarketType } from "@/lib/binance";
+import { fetchKlines, subscribeKline, type MarketType } from "@/lib/binance";
 import type { TradeSide } from "@/lib/api";
 import { calculateEMA } from "@/lib/indicators";
+import { formatPrice } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   computePositionBoxLayout,
   type PositionBoxLayout,
 } from "@/lib/positionBoxOverlay";
-import { formatPrice } from "@/lib/setup";
 
 interface PriceChartProps {
   symbol: string;
@@ -69,8 +73,13 @@ function getChartTheme(dark: boolean) {
     ema200: "#8b5cf6",
     support: "#22c55e",
     resistance: "#f97316",
+    fib: dark ? "#94a3b8" : "#64748b",
+    volUp: "rgba(16, 185, 129, 0.35)",
+    volDown: "rgba(239, 68, 68, 0.35)",
   };
 }
+
+const FIB_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786];
 
 function resolveSide(
   side: TradeSide,
@@ -101,11 +110,15 @@ export function PriceChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const boxStartTimeRef = useRef<number>(0);
   const boxEndTimeRef = useRef<number>(0);
+  const { resolvedTheme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [boxLayout, setBoxLayout] = useState<PositionBoxLayout>(HIDDEN_LAYOUT);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -116,6 +129,7 @@ export function PriceChart({
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let rangeHandler: (() => void) | null = null;
+    let unsubscribeLive: (() => void) | null = null;
 
     const updatePositionBox = () => {
       const chart = chartRef.current;
@@ -169,7 +183,7 @@ export function PriceChart({
 
         const chart = createChart(container, {
           width: container.clientWidth,
-          height: 420,
+          height: container.clientHeight || 420,
           layout: {
             background: { type: ColorType.Solid, color: theme.background },
             textColor: theme.text,
@@ -211,6 +225,22 @@ export function PriceChart({
 
         candleSeries.setData(candleData);
 
+        const volumeSeries = chart.addSeries(HistogramSeries, {
+          priceFormat: { type: "volume" },
+          priceScaleId: "vol",
+        });
+        volumeSeries.priceScale().applyOptions({
+          scaleMargins: { top: 0.82, bottom: 0 },
+        });
+        volumeSeries.setData(
+          candles.map((candle) => ({
+            time: Math.floor(candle.openTime / 1000) as UTCTimestamp,
+            value: candle.volume,
+            color: candle.close >= candle.open ? theme.volUp : theme.volDown,
+          })),
+        );
+        volumeSeriesRef.current = volumeSeries;
+
         const closes = candles.map((candle) => candle.close);
         const times = candles.map(
           (candle) => Math.floor(candle.openTime / 1000) as UTCTimestamp,
@@ -245,7 +275,7 @@ export function PriceChart({
         candleSeries.createPriceLine({
           price: support,
           color: theme.support,
-          lineWidth: 1,
+          lineWidth: 2,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
           title: "Support",
@@ -254,11 +284,27 @@ export function PriceChart({
         candleSeries.createPriceLine({
           price: resistance,
           color: theme.resistance,
-          lineWidth: 1,
+          lineWidth: 2,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
           title: "Resistance",
         });
+
+        const swingHigh = Math.max(...candles.slice(-120).map((c) => c.high));
+        const swingLow = Math.min(...candles.slice(-120).map((c) => c.low));
+        const fibRange = swingHigh - swingLow;
+        if (fibRange > 0) {
+          for (const level of FIB_LEVELS) {
+            candleSeries.createPriceLine({
+              price: swingHigh - fibRange * level,
+              color: theme.fib,
+              lineWidth: 1,
+              lineStyle: LineStyle.Dotted,
+              axisLabelVisible: false,
+              title: `Fib ${level}`,
+            });
+          }
+        }
 
         chart.timeScale().fitContent();
 
@@ -276,12 +322,37 @@ export function PriceChart({
           if (entry && chartRef.current) {
             chartRef.current.applyOptions({
               width: entry.contentRect.width,
+              height: entry.contentRect.height,
             });
             updatePositionBox();
           }
         });
 
         resizeObserver.observe(container);
+
+        unsubscribeLive = subscribeKline(
+          symbol,
+          interval,
+          marketType,
+          (candle) => {
+            if (disposed) return;
+            const time = candle.time as UTCTimestamp;
+            candleSeriesRef.current?.update({
+              time,
+              open: candle.open,
+              high: candle.high,
+              low: candle.low,
+              close: candle.close,
+            });
+            volumeSeriesRef.current?.update({
+              time,
+              value: candle.volume,
+              color:
+                candle.close >= candle.open ? theme.volUp : theme.volDown,
+            });
+            setLivePrice(candle.close);
+          },
+        );
       } catch (err) {
         if (!disposed) {
           setError(
@@ -299,6 +370,8 @@ export function PriceChart({
 
     return () => {
       disposed = true;
+      unsubscribeLive?.();
+      unsubscribeLive = null;
       if (chartRef.current && rangeHandler) {
         chartRef.current
           .timeScale()
@@ -309,6 +382,7 @@ export function PriceChart({
       chartRef.current?.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
     };
   }, [
     symbol,
@@ -320,21 +394,53 @@ export function PriceChart({
     takeProfit,
     entry,
     side,
+    resolvedTheme,
   ]);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [isFullscreen]);
 
   const tradeSide = resolveSide(side, marketType);
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+    <div
+      className={cn(
+        "rounded-xl border border-border/60 bg-card p-4 shadow-sm",
+        isFullscreen &&
+          "fixed inset-0 z-50 flex flex-col rounded-none border-0",
+      )}
+    >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-semibold">{symbol} narx grafigi</h3>
+          <h3 className="flex items-center gap-2 font-semibold">
+            {symbol} narx grafigi
+            {livePrice !== null && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                {formatPrice(livePrice)}
+              </span>
+            )}
+          </h3>
           <p className="text-sm text-muted-foreground">
             {marketType === "futures" ? "Futures" : "Spot"} · Timeframe:{" "}
             {interval} · {tradeSide === "long" ? "Long" : "Short"} position
           </p>
         </div>
-        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <span className="size-2 rounded-full bg-blue-500" />
             EMA50
@@ -344,6 +450,10 @@ export function PriceChart({
             EMA200
           </span>
           <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-full bg-slate-400" />
+            Fib
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="size-3 rounded-sm bg-emerald-500/35" />
             TP zona
           </span>
@@ -351,20 +461,44 @@ export function PriceChart({
             <span className="size-3 rounded-sm bg-red-500/35" />
             SL zona
           </span>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((prev) => !prev)}
+            aria-label={isFullscreen ? "Kichraytirish" : "To'liq ekran"}
+            title={isFullscreen ? "Kichraytirish (Esc)" : "To'liq ekran"}
+            className="flex size-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {isFullscreen ? (
+              <Minimize2 className="size-4" />
+            ) : (
+              <Maximize2 className="size-4" />
+            )}
+          </button>
         </div>
       </div>
 
-      <div className="relative">
+      <div className={cn("relative", isFullscreen && "min-h-0 flex-1")}>
         {loading && (
-          <Skeleton className="absolute inset-0 z-10 h-[420px] w-full rounded-lg" />
+          <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-lg" />
         )}
         {error ? (
-          <div className="flex h-[420px] items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground">
+          <div
+            className={cn(
+              "flex items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground",
+              isFullscreen ? "h-full" : "h-[420px]",
+            )}
+          >
             {error}
           </div>
         ) : (
           <>
-            <div ref={containerRef} className="h-[420px] w-full rounded-lg" />
+            <div
+              ref={containerRef}
+              className={cn(
+                "w-full rounded-lg",
+                isFullscreen ? "h-full" : "h-[420px]",
+              )}
+            />
             {boxLayout.visible && (
               <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
                 <div

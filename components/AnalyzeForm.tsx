@@ -1,8 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { useState } from "react";
-
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,96 +10,81 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AnalyzePayload, MarketType, Timeframe } from "@/lib/api";
+import type { MarketType, Timeframe } from "@/lib/api";
 
-const POPULAR_COINS = [
-  { label: "BTC", symbol: "BTCUSDT" },
-  { label: "ETH", symbol: "ETHUSDT" },
-  { label: "SOL", symbol: "SOLUSDT" },
-  { label: "BNB", symbol: "BNBUSDT" },
-] as const;
+const POPULAR_COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"] as const;
+
+const TIMEFRAMES: { value: Timeframe; label: string }[] = [
+  { value: "15m", label: "15 daqiqa" },
+  { value: "1h", label: "1 soat" },
+  { value: "4h", label: "4 soat" },
+  { value: "1d", label: "1 kun" },
+  { value: "1w", label: "1 hafta" },
+];
+
+export interface AnalyzeFormState {
+  symbol: string;
+  interval: Timeframe;
+  marketType: MarketType;
+  capital: string;
+  riskPercent: string;
+}
 
 interface AnalyzeFormProps {
+  values: AnalyzeFormState;
   loading: boolean;
-  symbol: string;
-  marketType: MarketType;
-  onSymbolChange: (symbol: string) => void;
-  onMarketTypeChange: (marketType: MarketType) => void;
-  onAnalyze: (payload: AnalyzePayload) => void;
+  onChange: (patch: Partial<AnalyzeFormState>) => void;
+  onSubmit: () => void;
 }
 
 export function AnalyzeForm({
+  values,
   loading,
-  symbol,
-  marketType,
-  onSymbolChange,
-  onMarketTypeChange,
-  onAnalyze,
+  onChange,
+  onSubmit,
 }: AnalyzeFormProps) {
-  const [interval, setInterval] = useState<Timeframe>("4h");
-  const [capital, setCapital] = useState("10000");
-  const [riskPercent, setRiskPercent] = useState("2");
-
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    const parsedCapital = Number(capital);
-    const parsedRisk = Number(riskPercent);
-
-    if (!symbol.trim()) {
-      return;
+    if (values.symbol.trim()) {
+      onSubmit();
     }
-
-    onAnalyze({
-      symbol: symbol.trim().toUpperCase(),
-      interval,
-      capital: parsedCapital,
-      riskPercent: parsedRisk,
-      marketType,
-    });
   };
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-border/60 bg-card p-4 shadow-sm sm:p-6"
+      className="rounded-xl border border-border/60 bg-card p-4 sm:p-5"
     >
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold tracking-tight">Tahlil parametrlari</h2>
-        <p className="text-sm text-muted-foreground">
-          Coin, timeframe va risk parametrlarini kiriting
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="mr-1 self-center text-xs text-muted-foreground">
-            Tezkor:
-          </span>
-          {POPULAR_COINS.map((coin) => (
-            <Button
-              key={coin.symbol}
-              type="button"
-              variant={symbol === coin.symbol ? "default" : "outline"}
-              size="sm"
-              disabled={loading}
-              onClick={() => onSymbolChange(coin.symbol)}
-            >
-              {coin.label}
-            </Button>
-          ))}
-        </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Tezkor:</span>
+        {POPULAR_COINS.map((coin) => (
+          <Button
+            key={coin}
+            type="button"
+            variant={values.symbol === coin ? "default" : "outline"}
+            size="sm"
+            disabled={loading}
+            onClick={() => onChange({ symbol: coin })}
+          >
+            {coin.replace("USDT", "")}
+          </Button>
+        ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="space-y-1.5">
           <label htmlFor="marketType" className="text-sm font-medium">
             Bozor turi
           </label>
           <Select
-            value={marketType}
-            onValueChange={(value) => onMarketTypeChange(value as MarketType)}
+            value={values.marketType}
+            onValueChange={(value) =>
+              onChange({ marketType: value as MarketType })
+            }
             disabled={loading}
           >
             <SelectTrigger id="marketType" className="w-full">
-              <SelectValue placeholder="Bozor tanlang" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="spot">Spot (long)</SelectItem>
@@ -116,8 +99,8 @@ export function AnalyzeForm({
           </label>
           <Input
             id="symbol"
-            value={symbol}
-            onChange={(event) => onSymbolChange(event.target.value.toUpperCase())}
+            value={values.symbol}
+            onChange={(e) => onChange({ symbol: e.target.value.toUpperCase() })}
             placeholder="BTCUSDT"
             disabled={loading}
             required
@@ -129,16 +112,21 @@ export function AnalyzeForm({
             Timeframe
           </label>
           <Select
-            value={interval}
-            onValueChange={(value) => setInterval(value as Timeframe)}
+            value={values.interval}
+            onValueChange={(value) =>
+              onChange({ interval: value as Timeframe })
+            }
             disabled={loading}
           >
             <SelectTrigger id="interval" className="w-full">
-              <SelectValue placeholder="Timeframe tanlang" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="4h">4 soat (4h)</SelectItem>
-              <SelectItem value="1d">1 kun (1d)</SelectItem>
+              {TIMEFRAMES.map((tf) => (
+                <SelectItem key={tf.value} value={tf.value}>
+                  {tf.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -151,9 +139,10 @@ export function AnalyzeForm({
             id="capital"
             type="number"
             min={1}
-            step={100}
-            value={capital}
-            onChange={(event) => setCapital(event.target.value)}
+            step="any"
+            inputMode="decimal"
+            value={values.capital}
+            onChange={(e) => onChange({ capital: e.target.value })}
             disabled={loading}
             required
           />
@@ -169,15 +158,15 @@ export function AnalyzeForm({
             min={0.1}
             max={100}
             step={0.1}
-            value={riskPercent}
-            onChange={(event) => setRiskPercent(event.target.value)}
+            value={values.riskPercent}
+            onChange={(e) => onChange({ riskPercent: e.target.value })}
             disabled={loading}
             required
           />
         </div>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-4">
         <Button type="submit" disabled={loading} className="w-full sm:w-auto">
           {loading ? (
             <>
@@ -185,7 +174,10 @@ export function AnalyzeForm({
               Tahlil qilinmoqda...
             </>
           ) : (
-            "Tahlil qilish"
+            <>
+              <Search className="size-4" />
+              Tahlil qilish
+            </>
           )}
         </Button>
       </div>

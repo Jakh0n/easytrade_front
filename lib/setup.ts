@@ -1,4 +1,5 @@
 import type {
+  AnalyzeIndicators,
   AnalyzeResponse,
   MarketType,
   StrategyChecklistItem,
@@ -6,6 +7,9 @@ import type {
   Trend,
   Verdict,
 } from "@/lib/api";
+import { formatPrice } from "@/lib/format";
+
+export { formatPrice };
 
 export interface TradeVerdictData {
   verdict: Verdict;
@@ -27,18 +31,29 @@ export interface TradeVerdictData {
   strategyConfidence: number;
   strategyDescription: string;
   checklist: StrategyChecklistItem[];
+  indicators: AnalyzeIndicators;
+  positionSize: number;
+  warning?: string;
+  confluence?: number;
+  htfTrend?: Trend;
+  htfInterval?: string;
+  mtfNote?: string;
+  btcTrend?: Trend;
+  btcAligned?: boolean;
+  btcNote?: string;
 }
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
-});
-
 export function buildTradeVerdict(result: AnalyzeResponse): TradeVerdictData {
-  const { verdict, strategy, risk, currentPrice, trend, symbol, marketType } =
-    result;
+  const {
+    verdict,
+    strategy,
+    risk,
+    indicators,
+    currentPrice,
+    trend,
+    symbol,
+    marketType,
+  } = result;
 
   return {
     verdict: verdict.verdict,
@@ -60,11 +75,29 @@ export function buildTradeVerdict(result: AnalyzeResponse): TradeVerdictData {
     strategyConfidence: strategy.confidence,
     strategyDescription: strategy.description,
     checklist: strategy.checklist,
+    indicators,
+    positionSize: risk.positionSize,
+    warning: risk.warning,
+    confluence: verdict.confluence,
+    htfTrend: verdict.htfTrend,
+    htfInterval: verdict.htfInterval,
+    mtfNote: verdict.mtfNote,
+    btcTrend: verdict.btcTrend,
+    btcAligned: verdict.btcAligned,
+    btcNote: verdict.btcNote,
   };
 }
 
-export function formatPrice(value: number): string {
-  return currencyFormatter.format(value);
+export function getSideLabel(side: TradeSide): string {
+  if (side === "long") return "LONG";
+  if (side === "short") return "SHORT";
+  return "—";
+}
+
+export function getRsiLabel(rsi: number): string {
+  if (rsi >= 70) return "Haddan tashqari sotib olingan";
+  if (rsi <= 30) return "Haddan tashqari sotilgan";
+  return "Neytral";
 }
 
 export function getVerdictStyles(verdict: Verdict): {

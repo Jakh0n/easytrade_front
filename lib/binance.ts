@@ -27,6 +27,67 @@ function getKlinesUrl(marketType: MarketType): string {
     : "https://api.binance.com/api/v3/klines";
 }
 
+function getWsBase(marketType: MarketType): string {
+  return marketType === "futures"
+    ? "wss://fstream.binance.com/ws"
+    : "wss://stream.binance.com:9443/ws";
+}
+
+export interface LiveCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  isFinal: boolean;
+}
+
+interface BinanceKlineMessage {
+  k: {
+    t: number;
+    o: string;
+    h: string;
+    l: string;
+    c: string;
+    v: string;
+    x: boolean;
+  };
+}
+
+/** Subscribes to Binance live kline updates. Returns a cleanup function. */
+export function subscribeKline(
+  symbol: string,
+  interval: string,
+  marketType: MarketType,
+  onCandle: (candle: LiveCandle) => void,
+): () => void {
+  const stream = `${symbol.toLowerCase()}@kline_${interval}`;
+  const ws = new WebSocket(`${getWsBase(marketType)}/${stream}`);
+
+  ws.onmessage = (event) => {
+    try {
+      const { k } = JSON.parse(event.data as string) as BinanceKlineMessage;
+      onCandle({
+        time: Math.floor(k.t / 1000),
+        open: Number(k.o),
+        high: Number(k.h),
+        low: Number(k.l),
+        close: Number(k.c),
+        volume: Number(k.v),
+        isFinal: k.x,
+      });
+    } catch {
+      // Ignore malformed frames.
+    }
+  };
+
+  return () => {
+    ws.onmessage = null;
+    ws.close();
+  };
+}
+
 export async function fetchKlines(
   symbol: string,
   interval: string,
