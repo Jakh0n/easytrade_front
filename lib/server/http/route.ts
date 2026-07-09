@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { ZodError, type ZodType } from "zod";
-import { isDatabaseConnected } from "../config/db";
+import { ensureDatabaseConnected } from "../config/db";
 import { AppError } from "../utils/AppError";
 import { verifyToken } from "../utils/token";
 import { handleRouteError } from "./errors";
@@ -47,11 +47,14 @@ export function createRouteHandler(
       const params = (await segmentData?.params) ?? {};
       const ctx: RouteContext = { request, params };
 
-      if (options.requireDb && !isDatabaseConnected()) {
-        throw new AppError(
-          "Ma'lumotlar bazasi ulanmagan. Iltimos, birozdan so'ng urinib ko'ring.",
-          503,
-        );
+      if (options.requireDb) {
+        const connected = await ensureDatabaseConnected();
+        if (!connected) {
+          throw new AppError(
+            "Ma'lumotlar bazasi ulanmagan. Iltimos, birozdan so'ng urinib ko'ring.",
+            503,
+          );
+        }
       }
 
       if (options.auth) {
