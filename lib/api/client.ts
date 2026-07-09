@@ -1,5 +1,3 @@
-/** Same-origin by default; set NEXT_PUBLIC_API_URL only for a separate API host. */
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const TOKEN_KEY = "easytrade_token";
 
 export class ApiError extends Error {
@@ -49,13 +47,6 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   }
 
   const qs = params.toString();
-
-  if (API_URL) {
-    const url = new URL(`${API_URL}${path}`);
-    params.forEach((value, key) => url.searchParams.set(key, value));
-    return url.toString();
-  }
-
   return qs ? `${path}?${qs}` : path;
 }
 
