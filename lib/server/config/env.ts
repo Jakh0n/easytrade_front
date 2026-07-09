@@ -12,8 +12,20 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().min(1).default("7d"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4o"),
-  /** Public URL (e.g. https://your-app.onrender.com). Render also sets RENDER_EXTERNAL_URL. */
-  APP_URL: z.string().url().optional(),
+  /** Spot market data — Vercel/AQSh IP uchun data-api ishlatiladi. */
+  BINANCE_SPOT_BASE_URL: z
+    .string()
+    .url()
+    .default("https://data-api.binance.vision"),
+  BINANCE_FUTURES_BASE_URL: z
+    .string()
+    .url()
+    .default("https://fapi.binance.com"),
+  /** Public URL (keep-alive ping). Bo'sh string ruxsat etilmaydi. */
+  APP_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);
