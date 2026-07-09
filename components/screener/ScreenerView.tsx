@@ -18,7 +18,7 @@ import { useScreener } from "@/hooks/useMarket";
 import { useAddWatchlist } from "@/hooks/useWatchlist";
 import { ApiError, type MarketType, type ScreenerCoin } from "@/lib/api";
 import { formatDate, formatPrice } from "@/lib/format";
-import { getStrategyStyles, getVerdictStyles } from "@/lib/setup";
+import { getStrategyStyles, getVerdictStyles, getActionLabel } from "@/lib/setup";
 
 type SortKey = "opportunity" | "confidence" | "rr" | "change" | "volume";
 type SideFilter = "all" | "long" | "short";
@@ -26,7 +26,7 @@ type SideFilter = "all" | "long" | "short";
 const SORTERS: Record<SortKey, (a: ScreenerCoin, b: ScreenerCoin) => number> = {
   opportunity: (a, b) => b.opportunityScore - a.opportunityScore,
   confidence: (a, b) => b.strategy.confidence - a.strategy.confidence,
-  rr: (a, b) => b.rrIdeal - a.rrIdeal,
+  rr: (a, b) => b.rrNow - a.rrNow,
   change: (a, b) => b.priceChangePercent - a.priceChangePercent,
   volume: (a, b) => b.quoteVolume - a.quoteVolume,
 };
@@ -203,7 +203,7 @@ export function ScreenerView() {
                         {coin.symbol.replace("USDT", "")}
                       </span>
                       <Badge className={`text-xs ${styles.badge}`}>
-                        {coin.verdictLabel}
+                        {getActionLabel(coin.verdict)}
                       </Badge>
                       <SideBadge side={coin.side} />
                       <Badge
@@ -227,9 +227,9 @@ export function ScreenerView() {
                     </p>
                   </div>
                   <div className="hidden shrink-0 text-right text-sm sm:block">
-                    <p className="text-xs text-muted-foreground">R:R</p>
+                    <p className="text-xs text-muted-foreground">R:R hozir</p>
                     <p className="font-medium tabular-nums">
-                      1:{coin.rrIdeal.toFixed(1)}
+                      1:{coin.rrNow.toFixed(1)}
                     </p>
                   </div>
                 </Link>

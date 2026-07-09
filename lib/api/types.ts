@@ -11,6 +11,21 @@ export type StrategyType =
   | "ema_crossover"
   | "rsi_divergence";
 
+export type PatternDirection = "bullish" | "bearish";
+
+export type PatternType =
+  | "bullish_engulfing"
+  | "bearish_engulfing"
+  | "hammer"
+  | "shooting_star";
+
+export interface CandlePattern {
+  type: PatternType;
+  label: string;
+  direction: PatternDirection;
+  volumeConfirmed: boolean;
+}
+
 export interface StrategyChecklistItem {
   label: string;
   passed: boolean;
@@ -37,6 +52,7 @@ export interface VerdictInfo {
   invalidation: number;
   stopLoss: number;
   takeProfit: number;
+  pattern?: CandlePattern | null;
   confluence?: number;
   htfTrend?: Trend;
   htfInterval?: string;
@@ -56,11 +72,21 @@ export interface AnalyzeIndicators {
   volumeStatus: VolumeStatus;
 }
 
+export interface FuturesGuidance {
+  suggestedLeverage: number;
+  maxSafeLeverage: number;
+  requiredMargin: number;
+  note: string;
+}
+
 export interface AnalyzeRisk {
   stopLoss: number;
   takeProfit: number;
   positionSize: number;
+  riskAmount: number;
+  notional: number;
   riskRewardRatio: number;
+  futures?: FuturesGuidance;
   warning?: string;
 }
 
@@ -94,6 +120,7 @@ export interface ScreenerCoin {
   verdictLabel: string;
   side: TradeSide;
   reason: string;
+  rrNow: number;
   rrIdeal: number;
   rsi: number;
   strategy: StrategyInfo;
@@ -217,4 +244,74 @@ export interface Alert {
   message: string;
   triggeredAt?: string;
   createdAt: string;
+}
+
+export type InvestHorizon = "1_3" | "3_6" | "6_12" | "12_24";
+
+export type InvestVerdict = "accumulate" | "dca_wait" | "avoid";
+
+export interface DcaTranche {
+  label: string;
+  price: number;
+  allocationPercent: number;
+  amountUsd: number;
+  units: number;
+  note: string;
+}
+
+export interface InvestTarget {
+  label: string;
+  price: number;
+  upsidePercent: number;
+}
+
+export interface InvestAnalysis {
+  symbol: string;
+  horizon: InvestHorizon;
+  horizonLabel: string;
+  currentPrice: number;
+  verdict: InvestVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  trend: Trend;
+  weeklyRsi: number;
+  high52w: number;
+  low52w: number;
+  drawdownFromHigh: number;
+  supportZones: number[];
+  targets: InvestTarget[];
+  invalidation: number;
+  maxLossPercent: number;
+  averageEntry: number;
+  dcaPlan: DcaTranche[];
+  checklist: StrategyChecklistItem[];
+  btcTrend: Trend;
+  generatedAt: string;
+}
+
+export interface InvestScreenerCoin {
+  symbol: string;
+  currentPrice: number;
+  priceChangePercent: number;
+  quoteVolume: number;
+  horizon: InvestHorizon;
+  horizonLabel: string;
+  verdict: InvestVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  trend: Trend;
+  weeklyRsi: number;
+  drawdownFromHigh: number;
+  topTargetUpside: number;
+  opportunityScore: number;
+}
+
+export interface InvestScreenerResponse {
+  scanned: number;
+  horizon: InvestHorizon;
+  btcTrend: Trend;
+  updatedAt: string;
+  coins: InvestScreenerCoin[];
 }

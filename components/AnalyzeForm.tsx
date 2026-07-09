@@ -156,7 +156,7 @@ export function AnalyzeForm({
             id="riskPercent"
             type="number"
             min={0.1}
-            max={100}
+            max={10}
             step={0.1}
             value={values.riskPercent}
             onChange={(e) => onChange({ riskPercent: e.target.value })}

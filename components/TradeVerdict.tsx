@@ -4,8 +4,10 @@ import {
   ArrowUpRight,
   Ban,
   Bitcoin,
+  CandlestickChart,
   Check,
   Clock,
+  Gauge,
   Layers,
   TrendingUp,
   X,
@@ -13,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AnalyzeResponse } from "@/lib/api";
-import { formatPrice, formatNumber } from "@/lib/format";
+import { formatPrice, formatNumber, formatUsd } from "@/lib/format";
 import {
   buildTradeVerdict,
   getMarketTypeLabel,
@@ -21,6 +23,7 @@ import {
   getSideLabel,
   getStrategyStyles,
   getVerdictStyles,
+  getActionLabel,
   isRrGood,
 } from "@/lib/setup";
 
@@ -103,7 +106,7 @@ export function TradeVerdict({ result }: { result: AnalyzeResponse }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge className={`text-sm ${styles.badge}`}>
-              {verdict.verdictLabel}
+              {getActionLabel(verdict.verdict)}
             </Badge>
             {verdict.side && (
               <Badge variant="outline" className="gap-1 text-xs">
@@ -120,6 +123,19 @@ export function TradeVerdict({ result }: { result: AnalyzeResponse }) {
             <Badge variant="outline" className="text-xs">
               {getMarketTypeLabel(verdict.marketType)}
             </Badge>
+            {verdict.pattern && (
+              <Badge
+                variant="outline"
+                className={`gap-1 text-xs ${
+                  verdict.pattern.direction === "bullish"
+                    ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                    : "border-red-500/40 text-red-600 dark:text-red-400"
+                }`}
+              >
+                <CandlestickChart className="size-3" />
+                {verdict.pattern.label}
+              </Badge>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -209,21 +225,54 @@ export function TradeVerdict({ result }: { result: AnalyzeResponse }) {
           <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-1">
             <LevelRow
               label="Pozitsiya hajmi"
-              value={`${formatNumber(verdict.positionSize, 4)} birlik`}
+              value={`${formatNumber(verdict.positionSize, 4)} birlik (${formatUsd(verdict.notional)})`}
+            />
+            <LevelRow
+              label="Riskdagi pul"
+              value={formatUsd(verdict.riskAmount)}
+              accent="amber"
             />
             <LevelRow
               label="R:R hozir"
               value={`1:${verdict.rrNow.toFixed(1)}`}
-              accent={isRrGood(verdict.rrNow) ? "green" : "red"}
+              accent={isRrGood(verdict.rrNow, verdict.marketType) ? "green" : "red"}
             />
             <LevelRow
               label="R:R kutilgan"
               value={`1:${verdict.rrIdeal.toFixed(1)}`}
-              accent={isRrGood(verdict.rrIdeal) ? "green" : "amber"}
+              accent={
+                isRrGood(verdict.rrIdeal, verdict.marketType) ? "green" : "amber"
+              }
             />
             <LevelRow label="Trend" value={verdict.trend.toUpperCase()} />
           </div>
         </div>
+
+        {verdict.futures && (
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <Gauge className="size-3.5" />
+              Futures leverage tavsiyasi
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <Metric
+                label="Tavsiya"
+                value={`${verdict.futures.suggestedLeverage}x`}
+              />
+              <Metric
+                label="Maksimum xavfsiz"
+                value={`${verdict.futures.maxSafeLeverage}x`}
+              />
+              <Metric
+                label="Kerakli margin"
+                value={formatUsd(verdict.futures.requiredMargin)}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {verdict.futures.note}
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Metric

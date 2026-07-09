@@ -6,3 +6,4 @@ export * from "./watchlist";
 export * from "./journal";
 export * from "./alerts";
 export * from "./chat";
+export * from "./invest";

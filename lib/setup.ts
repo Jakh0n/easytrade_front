@@ -1,6 +1,8 @@
 import type {
   AnalyzeIndicators,
   AnalyzeResponse,
+  CandlePattern,
+  FuturesGuidance,
   MarketType,
   StrategyChecklistItem,
   TradeSide,
@@ -33,6 +35,10 @@ export interface TradeVerdictData {
   checklist: StrategyChecklistItem[];
   indicators: AnalyzeIndicators;
   positionSize: number;
+  riskAmount: number;
+  notional: number;
+  futures?: FuturesGuidance;
+  pattern?: CandlePattern | null;
   warning?: string;
   confluence?: number;
   htfTrend?: Trend;
@@ -77,6 +83,10 @@ export function buildTradeVerdict(result: AnalyzeResponse): TradeVerdictData {
     checklist: strategy.checklist,
     indicators,
     positionSize: risk.positionSize,
+    riskAmount: risk.riskAmount,
+    notional: risk.notional,
+    futures: risk.futures,
+    pattern: verdict.pattern,
     warning: risk.warning,
     confluence: verdict.confluence,
     htfTrend: verdict.htfTrend,
@@ -92,6 +102,17 @@ export function getSideLabel(side: TradeSide): string {
   if (side === "long") return "LONG";
   if (side === "short") return "SHORT";
   return "—";
+}
+
+export function getActionLabel(verdict: Verdict): string {
+  switch (verdict) {
+    case "enter":
+      return "Kirish";
+    case "avoid":
+      return "Kirish xato";
+    default:
+      return "Kutib turish";
+  }
 }
 
 export function getRsiLabel(rsi: number): string {
@@ -125,8 +146,8 @@ export function getVerdictStyles(verdict: Verdict): {
   }
 }
 
-export function isRrGood(rr: number): boolean {
-  return rr >= 1.5;
+export function isRrGood(rr: number, marketType: MarketType = "spot"): boolean {
+  return rr >= (marketType === "futures" ? 2 : 1.5);
 }
 
 export function getMarketTypeLabel(marketType: MarketType): string {

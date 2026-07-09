@@ -82,7 +82,7 @@ export function SettingsView() {
           <Input
             type="number"
             min={0.1}
-            max={100}
+            max={10}
             step={0.1}
             value={riskPercent}
             onChange={(e) => setRiskPercent(e.target.value)}
