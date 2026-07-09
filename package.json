@@ -7,10 +7,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest",
+    "test:server": "jest --selectProjects server"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "@base-ui/react": "^1.6.0",
+    "axios": "^1.18.1",
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.7.4",
+    "node-cron": "^4.6.0",
+    "openai": "^6.45.0",
+    "zod": "^4.4.3",
     "@tanstack/react-query": "^5.101.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -29,6 +38,9 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node-cron": "^3.0.11",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

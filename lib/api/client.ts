@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+/** Same-origin by default; set NEXT_PUBLIC_API_URL only for a separate API host. */
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const TOKEN_KEY = "easytrade_token";
 
 export class ApiError extends Error {
@@ -38,15 +39,24 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
-  const url = new URL(`${API_URL}${path}`);
+  const params = new URLSearchParams();
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) {
-        url.searchParams.set(key, String(value));
+        params.set(key, String(value));
       }
     }
   }
-  return url.toString();
+
+  const qs = params.toString();
+
+  if (API_URL) {
+    const url = new URL(`${API_URL}${path}`);
+    params.forEach((value, key) => url.searchParams.set(key, value));
+    return url.toString();
+  }
+
+  return qs ? `${path}?${qs}` : path;
 }
 
 export async function apiFetch<T>(

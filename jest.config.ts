@@ -9,7 +9,10 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
-  testMatch: ["**/__tests__/**/*.test.{ts,tsx}"],
+  testMatch: [
+    "<rootDir>/__tests__/**/*.test.{ts,tsx}",
+    "<rootDir>/lib/server/__tests__/**/*.test.ts",
+  ],
 };
 
 export default createJestConfig(config);
