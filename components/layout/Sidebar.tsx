@@ -3,6 +3,7 @@
 import {
   Bell,
   BookOpen,
+  Layers,
   LayoutDashboard,
   LineChart,
   PiggyBank,
@@ -24,6 +25,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Boshqaruv paneli", icon: LayoutDashboard },
   { href: "/screener", label: "Skrining", icon: Radar },
+  { href: "/strategies", label: "Strategiyalar", icon: Layers },
   { href: "/analyze", label: "Tahlil", icon: LineChart },
   { href: "/invest", label: "Investitsiya", icon: PiggyBank },
   { href: "/watchlist", label: "Watchlist", icon: Star },

@@ -1,10 +1,4 @@
-export const runtime = "nodejs";
-export const maxDuration = 60;
-
-import {
-  createRouteHandler,
-  json,
-} from "@/lib/server/http/route";
+import { createRouteHandler, json } from "@/lib/server/http/route";
 import { buildTechnicalAnalysis } from "@/lib/server/services/analysis.service";
 import {
   analyzeBodySchema,

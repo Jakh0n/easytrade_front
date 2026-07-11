@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const tradeSchema = new Schema(
   {
@@ -41,4 +41,4 @@ tradeSchema.index({ userId: 1, status: 1, openedAt: -1 });
 
 export type TradeDoc = InferSchemaType<typeof tradeSchema>;
 
-export const Trade = model("Trade", tradeSchema);
+export const Trade = mongoose.models.Trade ?? model("Trade", tradeSchema);

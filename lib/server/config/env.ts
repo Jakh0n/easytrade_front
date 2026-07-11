@@ -4,28 +4,13 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
-  MONGODB_URI: z
-    .string()
-    .min(1)
-    .default("mongodb://127.0.0.1:27017/easytrade"),
+  MONGODB_URI: z.string().min(1).default("mongodb://127.0.0.1:27017/easytrade"),
   JWT_SECRET: z.string().min(1).default("dev-secret-change-me"),
   JWT_EXPIRES_IN: z.string().min(1).default("7d"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4o"),
-  /** Spot market data — Vercel/AQSh IP uchun data-api ishlatiladi. */
-  BINANCE_SPOT_BASE_URL: z
-    .string()
-    .url()
-    .default("https://data-api.binance.vision"),
-  BINANCE_FUTURES_BASE_URL: z
-    .string()
-    .url()
-    .default("https://fapi.binance.com"),
-  /** Public URL (keep-alive ping). Bo'sh string ruxsat etilmaydi. */
-  APP_URL: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().url().optional(),
-  ),
+  /** Public URL (e.g. https://your-app.onrender.com). Render also sets RENDER_EXTERNAL_URL. */
+  APP_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

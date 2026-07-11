@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const backtestResultSchema = new Schema(
   {
@@ -17,4 +17,5 @@ backtestResultSchema.index(
 
 export type BacktestResultDoc = InferSchemaType<typeof backtestResultSchema>;
 
-export const BacktestResult = model("BacktestResult", backtestResultSchema);
+export const BacktestResult =
+  mongoose.models.BacktestResult ?? model("BacktestResult", backtestResultSchema);

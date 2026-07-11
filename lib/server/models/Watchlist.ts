@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const watchlistSchema = new Schema(
   {
@@ -27,4 +27,5 @@ watchlistSchema.index(
 
 export type WatchlistDoc = InferSchemaType<typeof watchlistSchema>;
 
-export const Watchlist = model("Watchlist", watchlistSchema);
+export const Watchlist =
+  mongoose.models.Watchlist ?? model("Watchlist", watchlistSchema);

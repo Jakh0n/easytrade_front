@@ -1,5 +1,4 @@
 import axios, { isAxiosError } from "axios";
-import { env } from "../config/env";
 import { AppError } from "../utils/AppError";
 import type {
   BinanceKlineRaw,
@@ -9,10 +8,11 @@ import type {
   Ticker24hr,
 } from "../types/index";
 
+const SPOT_BASE_URL = "https://api.binance.com";
+const FUTURES_BASE_URL = "https://fapi.binance.com";
+
 function getBaseUrl(marketType: MarketType): string {
-  return marketType === "futures"
-    ? env.BINANCE_FUTURES_BASE_URL
-    : env.BINANCE_SPOT_BASE_URL;
+  return marketType === "futures" ? FUTURES_BASE_URL : SPOT_BASE_URL;
 }
 
 function getKlinesPath(marketType: MarketType): string {
@@ -25,21 +25,15 @@ function getTickerPath(marketType: MarketType): string {
     : "/api/v3/ticker/24hr";
 }
 
-function handleBinanceError(error: unknown, marketType: MarketType): never {
+function handleBinanceError(error: unknown): never {
   if (isAxiosError(error)) {
     const status = error.response?.status;
 
     if (status === 400) {
-      throw new AppError("Symbol topilmadi yoki noto'g'ri", 400);
+      throw new Error("Symbol topilmadi yoki noto'g'ri");
     }
 
-    if (status === 451) {
-      throw new AppError(
-        "Binance bu mintaqadan market ma'lumotlarini bermaydi. Spot rejimini sinab ko'ring.",
-        503,
-      );
-    }
-
+    // 429 = rate limit exceeded, 418 = IP auto-banned for ignoring limits.
     if (status === 429 || status === 418) {
       const retryAfter = error.response?.headers?.["retry-after"];
       const waitText = retryAfter ? ` (~${retryAfter}s kuting)` : "";
@@ -50,27 +44,21 @@ function handleBinanceError(error: unknown, marketType: MarketType): never {
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
-      throw new AppError("Binance API ga ulanish vaqti tugadi", 504);
+      throw new Error("Binance API ga ulanish vaqti tugadi");
     }
 
     if (!error.response) {
-      const hint =
-        marketType === "futures"
-          ? " Futures ma'lumotlari ba'zi serverlardan bloklangan bo'lishi mumkin — spot rejimini sinab ko'ring."
-          : "";
-      throw new AppError(
-        `Binance market ma'lumotlari vaqtincha mavjud emas.${hint}`,
-        502,
+      throw new Error(
+        "Binance API ga ulanib bo'lmadi. Tarmoq xatosini tekshiring",
       );
     }
 
-    throw new AppError(
+    throw new Error(
       `Binance API xatosi: ${error.response.status} ${error.response.statusText}`,
-      502,
     );
   }
 
-  throw new AppError("Kutilmagan xato yuz berdi", 500);
+  throw new Error("Kutilmagan xato yuz berdi");
 }
 
 /**
@@ -138,7 +126,7 @@ export async function getKlines(
     });
     return candles;
   } catch (error) {
-    handleBinanceError(error, marketType);
+    handleBinanceError(error);
   }
 }
 
@@ -157,7 +145,7 @@ export async function get24hrTicker(
 
     return parseTicker(data);
   } catch (error) {
-    handleBinanceError(error, marketType);
+    handleBinanceError(error);
   }
 }
 
@@ -182,6 +170,6 @@ export async function getAll24hrTickers(
     });
     return tickers;
   } catch (error) {
-    handleBinanceError(error, marketType);
+    handleBinanceError(error);
   }
 }

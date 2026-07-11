@@ -1,4 +1,4 @@
-import { Schema, model, type InferSchemaType } from "mongoose";
+import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 const alertSchema = new Schema(
   {
@@ -39,4 +39,4 @@ alertSchema.index({ status: 1, symbol: 1, marketType: 1 });
 
 export type AlertDoc = InferSchemaType<typeof alertSchema>;
 
-export const Alert = model("Alert", alertSchema);
+export const Alert = mongoose.models.Alert ?? model("Alert", alertSchema);

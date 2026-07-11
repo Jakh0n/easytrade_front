@@ -7,3 +7,4 @@ export * from "./journal";
 export * from "./alerts";
 export * from "./chat";
 export * from "./invest";
+export * from "./strategies";

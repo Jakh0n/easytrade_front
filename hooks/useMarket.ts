@@ -7,8 +7,10 @@ import {
   fetchBacktest,
   fetchInvestScreener,
   fetchMarketScreener,
+  fetchStrategyScreener,
+  analyzeStrategy,
 } from "@/lib/api";
-import type { InvestHorizon, MarketType, Timeframe } from "@/lib/api";
+import type { CustomStrategyId, InvestHorizon, MarketType, Timeframe } from "@/lib/api";
 
 export function useAnalyze() {
   return useMutation({ mutationFn: analyzeSymbol });
@@ -49,4 +51,20 @@ export function useInvestScreener(horizon: InvestHorizon, limit: number = 15) {
     queryFn: () => fetchInvestScreener(horizon, limit),
     staleTime: 10 * 60_000,
   });
+}
+
+export function useStrategyScreener(
+  strategyId: CustomStrategyId,
+  marketType: MarketType,
+  limit: number = 15,
+) {
+  return useQuery({
+    queryKey: ["strategy-screener", strategyId, marketType, limit],
+    queryFn: () => fetchStrategyScreener(strategyId, marketType, limit),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useStrategyAnalyze() {
+  return useMutation({ mutationFn: analyzeStrategy });
 }

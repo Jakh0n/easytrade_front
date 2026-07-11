@@ -28,10 +28,6 @@ export function resolveStatusCode(error: unknown): number {
     return 400;
   }
 
-  if (error instanceof Error && error.message.includes("yetarli ma'lumot")) {
-    return 400;
-  }
-
   return 500;
 }
 

@@ -1,10 +1,4 @@
-export const runtime = "nodejs";
-export const maxDuration = 60;
-
-import {
-  createRouteHandler,
-  json,
-} from "@/lib/server/http/route";
+import { createRouteHandler, json } from "@/lib/server/http/route";
 import { runMarketScreener } from "@/lib/server/services/screener.service";
 import {
   screenerQuerySchema,

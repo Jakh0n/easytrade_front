@@ -323,3 +323,78 @@ export interface BacktestSummary {
   byStrategy: BacktestStrategyStat[];
   generatedAt: string;
 }
+
+export type CustomStrategyId = "ema_smc";
+
+export type EmaSmcVerdict = "enter" | "wait" | "avoid";
+
+export interface StrategyDefinition {
+  id: CustomStrategyId;
+  name: string;
+  shortName: string;
+  description: string;
+  timeframes: string;
+  checklist: string[];
+  minRiskReward: number;
+  riskPercent: number;
+}
+
+export interface StrategiesListResponse {
+  strategies: StrategyDefinition[];
+}
+
+export interface EmaSmcScreenerCoinResult {
+  symbol: string;
+  currentPrice: number;
+  priceChangePercent: number;
+  quoteVolume: number;
+  side: TradeSide;
+  verdict: EmaSmcVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  trendDirection: "bullish" | "bearish";
+  riskReward: number;
+  entryType: "fvg" | "ob" | null;
+  stopLoss: number;
+  takeProfit: number;
+  sweep: { level: number; levelType: string } | null;
+  structure: { type: "bos" | "choch"; level: number } | null;
+  opportunityScore: number;
+}
+
+export interface EmaSmcScreenerResponse {
+  strategyId: CustomStrategyId;
+  scanned: number;
+  marketType: MarketType;
+  updatedAt: string;
+  coins: EmaSmcScreenerCoinResult[];
+}
+
+export interface EmaSmcAnalysisResponse {
+  symbol: string;
+  marketType: MarketType;
+  currentPrice: number;
+  side: TradeSide;
+  verdict: EmaSmcVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  ema200: number;
+  trendDirection: "bullish" | "bearish";
+  keyLevels: {
+    pdh: number;
+    pdl: number;
+    eqh: number | null;
+    eql: number | null;
+  };
+  sweep: { level: number; levelType: string } | null;
+  structure: { type: "bos" | "choch"; level: number } | null;
+  entryType: "fvg" | "ob" | null;
+  entryZone: [number, number] | null;
+  stopLoss: number;
+  takeProfit: number;
+  riskReward: number;
+  checklist: StrategyChecklistItem[];
+  generatedAt: string;
+}
