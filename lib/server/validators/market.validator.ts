@@ -85,3 +85,16 @@ export const strategyAnalyzeBodySchema = z.object({
 
 export type StrategyScreenerQuery = z.infer<typeof strategyScreenerQuerySchema>;
 export type StrategyAnalyzeBody = z.infer<typeof strategyAnalyzeBodySchema>;
+
+export const strategySignalTestSchema = z.object({
+  symbol: z
+    .string()
+    .trim()
+    .min(1)
+    .transform((value) => value.toUpperCase())
+    .optional(),
+  marketType: marketTypeSchema.optional(),
+  force: z.coerce.boolean().optional().default(false),
+});
+
+export type StrategySignalTestBody = z.infer<typeof strategySignalTestSchema>;

@@ -1,16 +1,19 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { evaluateAlerts } from "../services/alert.service";
+import { evaluateTelegramSignalHub } from "../services/telegram-hub.service";
 import {
   getKeepAliveHealthUrl,
   pingHealthEndpoint,
 } from "../services/keepalive.service";
 import { isDatabaseConnected } from "./db";
+import { env } from "./env";
 
 const ALERT_CRON = "* * * * *"; // every minute
 const KEEP_ALIVE_CRON = "*/14 * * * *"; // every 14 minutes
 
 let alertTask: ScheduledTask | null = null;
 let keepAliveTask: ScheduledTask | null = null;
+let signalTask: ScheduledTask | null = null;
 
 export function startSchedulers(): void {
   alertTask = cron.schedule(ALERT_CRON, () => {
@@ -25,6 +28,25 @@ export function startSchedulers(): void {
       );
     });
   });
+
+  if (env.TELEGRAM_SIGNALS_ENABLED && cron.validate(env.TELEGRAM_SIGNAL_CRON)) {
+    signalTask = cron.schedule(env.TELEGRAM_SIGNAL_CRON, () => {
+      if (!isDatabaseConnected()) {
+        return;
+      }
+
+      void evaluateTelegramSignalHub().catch((error) => {
+        console.error(
+          "Strategiya signal xatosi:",
+          error instanceof Error ? error.message : error,
+        );
+      });
+    });
+
+    console.log(
+      `Telegram Signal Hub yoqildi (cron: ${env.TELEGRAM_SIGNAL_CRON}, ema_smc: ${env.TELEGRAM_SEND_EMA_SMC}, screener: ${env.TELEGRAM_SEND_SCREENER})`,
+    );
+  }
 
   const keepAliveUrl = getKeepAliveHealthUrl();
   if (keepAliveUrl) {
@@ -54,4 +76,6 @@ export function stopSchedulers(): void {
   alertTask = null;
   keepAliveTask?.stop();
   keepAliveTask = null;
+  signalTask?.stop();
+  signalTask = null;
 }
