@@ -29,13 +29,39 @@ const KEYS = [
 ] as const;
 const REQUIRED = ["MONGODB_URI", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHANNEL_ID"] as const;
 
+const SELF_PING_MS = 10 * 60_000;
+
+/**
+ * Alohida Render web servisi sifatida ishlaganda (TRADE_STANDALONE=true): Render port ochilishini
+ * talab qiladi va Free tarifda 15 daqiqa so'rovsiz qolsa uxlatadi — shuning uchun /health va
+ * o'z public URL'iga har 10 daqiqada ping.
+ */
+async function startHealthServer(selfUrl: string | undefined): Promise<void> {
+  const port = Number(process.env.PORT);
+  if (!port) return;
+  const { createServer } = await import("node:http");
+  createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("OK");
+  }).listen(port, () => console.log(`[trade-worker] /health port ${port}`));
+
+  if (!selfUrl) return;
+  const url = `${selfUrl.replace(/\/$/, "")}/health`;
+  setInterval(() => {
+    fetch(url, { signal: AbortSignal.timeout(15_000) }).catch((error) =>
+      console.error("[trade-worker] self-ping xatosi:", error instanceof Error ? error.message : error),
+    );
+  }, SELF_PING_MS);
+}
+
 function isolateEnv(): string[] {
   for (const key of KEYS) {
     const own = process.env[PREFIX + key];
     delete process.env[key];
     if (own !== undefined && own !== "") process.env[key] = own;
   }
-  // Qo'shni servisning public URL'i — keep-alive uni ping qilmasin.
+  // Qo'shni servisning public URL'i — scheduler keep-alive'i uni ping qilmasin
+  // (alohida servisda o'z URL'imizni startHealthServer o'zi ping qiladi).
   delete process.env.RENDER_EXTERNAL_URL;
   delete process.env.VERCEL;
   process.env.TELEGRAM_SIGNALS_ENABLED ??= "true";
@@ -43,7 +69,10 @@ function isolateEnv(): string[] {
 }
 
 async function main(): Promise<void> {
+  const standalone = process.env.TRADE_STANDALONE === "true";
+  const selfUrl = process.env.RENDER_EXTERNAL_URL;
   const missing = isolateEnv();
+  if (standalone) await startHealthServer(selfUrl);
   if (missing.length) {
     // 0 kod bilan chiqamiz — qayta ishga tushirish sikli aylanmasin, qo'shni loyiha ta'sirlanmaydi.
     console.error(`[trade-worker] Sozlanmagan: ${missing.join(", ")} — worker ishga tushmadi.`);
