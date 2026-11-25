@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "jest",
     "test:server": "jest lib/server/__tests__",
+    "worker": "node --import tsx lib/server/scripts/signal-worker.ts",
     "backtest": "tsx lib/server/scripts/run-backtest.ts",
     "backtest:xs": "tsx lib/server/scripts/run-cross-sectional.ts",
     "backtest:xs:sweep": "tsx lib/server/scripts/run-cross-sectional-sweep.ts",
