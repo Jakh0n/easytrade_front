@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { env } from "../config/env";
 import { User } from "../models/User";
 import { AppError } from "../utils/AppError";
 import { signToken } from "../utils/token";
@@ -27,6 +28,11 @@ export async function registerUser(
   password: string,
   name: string,
 ): Promise<AuthResponse> {
+  // Shaxsiy terminal: birinchi foydalanuvchidan keyin ro'yxat yopiladi.
+  if (!env.ALLOW_REGISTRATION && (await User.estimatedDocumentCount()) > 0) {
+    throw new AppError("Ro'yxatdan o'tish yopiq — bu shaxsiy sayt", 403);
+  }
+
   const existing = await User.findOne({ email: email.toLowerCase() }).lean();
 
   if (existing) {

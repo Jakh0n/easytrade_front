@@ -12,71 +12,75 @@ interface TelegramResponse {
   description?: string;
 }
 
-async function callTelegram(
-  method: string,
-  body: FormData | Record<string, string>,
-): Promise<TelegramResponse> {
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    throw new Error("TELEGRAM_BOT_TOKEN sozlanmagan");
+export async function sendTelegramMessage(
+  text: string,
+  options: { replyTo?: number | null } = {},
+): Promise<number> {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
+    throw new Error("TELEGRAM_BOT_TOKEN yoki TELEGRAM_CHANNEL_ID sozlanmagan");
   }
 
-  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const body: Record<string, unknown> = {
+    chat_id: env.TELEGRAM_CHANNEL_ID,
+    text,
+    parse_mode: "HTML",
+    link_preview_options: { is_disabled: true },
+  };
+  if (options.replyTo) {
+    body.reply_parameters = {
+      message_id: options.replyTo,
+      allow_sending_without_reply: true,
+    };
+  }
 
   const response = await fetch(
-    `${TELEGRAM_API}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
+    `${TELEGRAM_API}/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {
       method: "POST",
-      headers: isFormData ? undefined : { "Content-Type": "application/json" },
-      body: isFormData ? body : JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     },
   );
 
   const data = (await response.json()) as TelegramResponse;
-
   if (!data.ok) {
     throw new Error(data.description ?? "Telegram API xatosi");
   }
-
-  return data;
+  return data.result?.message_id ?? 0;
 }
 
-export async function sendTelegramMessage(
-  text: string,
-  parseMode: "HTML" | "Markdown" = "HTML",
-): Promise<number> {
-  if (!env.TELEGRAM_CHANNEL_ID) {
-    throw new Error("TELEGRAM_CHANNEL_ID sozlanmagan");
-  }
-
-  const result = await callTelegram("sendMessage", {
-    chat_id: env.TELEGRAM_CHANNEL_ID,
-    text,
-    parse_mode: parseMode,
-    disable_web_page_preview: "true",
-  });
-
-  return result.result?.message_id ?? 0;
-}
-
+/** Rasm + caption (HTML, ≤1024 belgi). message_id qaytaradi. */
 export async function sendTelegramPhoto(
-  image: Buffer,
+  photo: Buffer,
   caption: string,
-  filename: string = "chart.png",
+  options: { replyTo?: number | null } = {},
 ): Promise<number> {
-  if (!env.TELEGRAM_CHANNEL_ID) {
-    throw new Error("TELEGRAM_CHANNEL_ID sozlanmagan");
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
+    throw new Error("TELEGRAM_BOT_TOKEN yoki TELEGRAM_CHANNEL_ID sozlanmagan");
   }
 
   const form = new FormData();
   form.append("chat_id", env.TELEGRAM_CHANNEL_ID);
   form.append("caption", caption);
   form.append("parse_mode", "HTML");
-  form.append(
-    "photo",
-    new Blob([new Uint8Array(image)], { type: "image/png" }),
-    filename,
-  );
+  form.append("photo", new Blob([new Uint8Array(photo)], { type: "image/png" }), "chart.png");
+  if (options.replyTo) {
+    form.append(
+      "reply_parameters",
+      JSON.stringify({ message_id: options.replyTo, allow_sending_without_reply: true }),
+    );
+  }
 
-  const result = await callTelegram("sendPhoto", form);
-  return result.result?.message_id ?? 0;
+  const response = await fetch(`${TELEGRAM_API}/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  const data = (await response.json()) as TelegramResponse;
+  if (!data.ok) {
+    throw new Error(data.description ?? "Telegram API xatosi");
+  }
+  return data.result?.message_id ?? 0;
 }

@@ -2,20 +2,8 @@ import {
   createRouteHandler,
   json,
 } from "@/lib/server/http/route";
-import {
-  getUserProfile,
-  loginUser,
-  registerUser,
-  updateUserSettings,
-} from "@/lib/server/services/auth.service";
-import {
-  loginSchema,
-  registerSchema,
-  settingsSchema,
-  type LoginBody,
-  type RegisterBody,
-  type SettingsBody,
-} from "@/lib/server/validators/auth.validator";
+import { registerUser } from "@/lib/server/services/auth.service";
+import { registerSchema, type RegisterBody } from "@/lib/server/validators/auth.validator";
 
 export const POST = createRouteHandler(
   async (ctx) => {

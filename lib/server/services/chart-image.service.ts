@@ -1,466 +1,309 @@
-import { createCanvas, type CanvasRenderingContext2D } from "canvas";
+import path from "node:path";
+import { createCanvas, registerFont } from "canvas";
 import type { Candle } from "../types/index";
-import type { EmaSmcAnalysis } from "./ema-smc.strategy.service";
-import {
-  fetchTradingViewChartForSymbol,
-  isTradingViewChartConfigured,
-} from "./tradingview-chart.service";
 
-const SCALE = 2;
-const WIDTH = 1280;
-const HEIGHT = 720;
-const CANDLE_COUNT = 48;
-const VOL_HEIGHT = 56;
-
-const COLORS = {
-  bg: "#0b1220",
-  panel: "#111827",
-  grid: "#1f2937",
-  text: "#9ca3af",
-  textBright: "#f1f5f9",
-  up: "#22c55e",
-  upBody: "#16a34a",
-  down: "#ef4444",
-  downBody: "#dc2626",
-  pdh: "#f97316",
-  pdl: "#22c55e",
-  eqh: "#fb923c",
-  eql: "#4ade80",
-  sl: "#f87171",
-  tp: "#4ade80",
-  entry: "#60a5fa",
-  priceTag: "#22c55e",
-  watermark: "rgba(100,116,139,0.07)",
-};
-
-interface ChartArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+/**
+ * Telegram uchun signal grafigi (PNG): shamlar, indikator chiziqlari (Supertrend, EMA),
+ * kirish/stop/TP darajalari va kirish shami belgisi.
+ */
+export interface ChartLine {
+  /** candles bilan bir xil uzunlikda; NaN — chizilmaydi. */
+  values: number[];
+  color?: string;
+  /** Berilsa: 1 → yashil, -1 → qizil, yo'nalish o'zgarganda chiziq uziladi (Supertrend). */
+  dir?: number[];
+  label?: string;
 }
 
-interface LevelLine {
+export interface ChartLevel {
   price: number;
-  color: string;
   label: string;
-  dashed?: boolean;
-  priority: number;
+  color: string;
 }
 
-function scaledCanvas() {
-  const canvas = createCanvas(WIDTH * SCALE, HEIGHT * SCALE);
-  const ctx = canvas.getContext("2d");
-  ctx.scale(SCALE, SCALE);
-  ctx.imageSmoothingEnabled = true;
-  return { canvas, ctx };
-}
-
-function formatPrice(price: number): string {
-  if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  if (price >= 1) return price.toFixed(2);
-  if (price >= 0.01) return price.toFixed(4);
-  return price.toFixed(6);
-}
-
-function getChartArea(): ChartArea {
-  return {
-    x: 16,
-    y: 72,
-    width: WIDTH - 16 - 88,
-    height: HEIGHT - 72 - 36 - VOL_HEIGHT,
-  };
-}
-
-function priceToY(
-  price: number,
-  minPrice: number,
-  maxPrice: number,
-  area: ChartArea,
-): number {
-  const range = maxPrice - minPrice || 1;
-  return area.y + area.height - ((price - minPrice) / range) * area.height;
-}
-
-function collectLevels(analysis: EmaSmcAnalysis): LevelLine[] {
-  const levels: LevelLine[] = [
-    { price: analysis.keyLevels.pdh, color: COLORS.pdh, label: "PDH", priority: 2 },
-    { price: analysis.keyLevels.pdl, color: COLORS.pdl, label: "PDL", priority: 2 },
-    { price: analysis.stopLoss, color: COLORS.sl, label: "SL", dashed: true, priority: 3 },
-    { price: analysis.takeProfit, color: COLORS.tp, label: "TP", dashed: true, priority: 3 },
-  ];
-
-  if (analysis.keyLevels.eqh) {
-    levels.push({ price: analysis.keyLevels.eqh, color: COLORS.eqh, label: "EQH", priority: 1 });
-  }
-  if (analysis.keyLevels.eql) {
-    levels.push({ price: analysis.keyLevels.eql, color: COLORS.eql, label: "EQL", priority: 1 });
-  }
-
-  return levels.filter((l) => l.price > 0);
-}
-
-/** Faqat joriy narx atrofidagi darajalarni ko'rsatadi — candlelar katta bo'ladi. */
-function computePriceBounds(
-  candles: Candle[],
-  levels: LevelLine[],
-  entryZone: [number, number] | null,
-  currentPrice: number,
-): { min: number; max: number; visibleLevels: LevelLine[] } {
-  const recent = candles.slice(-CANDLE_COUNT);
-  let min = Math.min(...recent.map((c) => c.low));
-  let max = Math.max(...recent.map((c) => c.high));
-
-  const maxDistance = currentPrice * 0.045;
-
-  const visibleLevels = levels.filter((level) => {
-    if (level.priority >= 3) return true;
-    if (level.priority === 2) return Math.abs(level.price - currentPrice) <= maxDistance * 2;
-    return Math.abs(level.price - currentPrice) <= maxDistance;
-  });
-
-  for (const level of visibleLevels) {
-    min = Math.min(min, level.price);
-    max = Math.max(max, level.price);
-  }
-
-  if (entryZone) {
-    min = Math.min(min, entryZone[0]);
-    max = Math.max(max, entryZone[1]);
-  }
-
-  min = Math.min(min, currentPrice);
-  max = Math.max(max, currentPrice);
-
-  const padding = Math.max((max - min) * 0.12, currentPrice * 0.002);
-  return { min: min - padding, max: max + padding, visibleLevels };
-}
-
-function drawRoundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-function drawHeader(
-  ctx: CanvasRenderingContext2D,
-  analysis: EmaSmcAnalysis,
-) {
-  const sideLabel = analysis.side === "long" ? "LONG" : "SHORT";
-  const sideColor = analysis.side === "long" ? COLORS.up : COLORS.down;
-
-  ctx.fillStyle = COLORS.panel;
-  drawRoundedRect(ctx, 12, 12, WIDTH - 24, 52, 8);
-  ctx.fill();
-
-  ctx.fillStyle = COLORS.textBright;
-  ctx.font = "bold 22px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(analysis.symbol, 24, 38);
-
-  ctx.fillStyle = COLORS.text;
-  ctx.font = "14px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillText(`5M  ·  EMA+SMC  ·  `, 24, 56);
-
-  const metaWidth = ctx.measureText(`5M  ·  EMA+SMC  ·  `).width;
-  ctx.fillStyle = sideColor;
-  ctx.font = "bold 14px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillText(sideLabel, 24 + metaWidth, 56);
-
-  const priceText = formatPrice(analysis.currentPrice);
-  const tagW = ctx.measureText(priceText).width + 20;
-  const tagX = WIDTH - tagW - 20;
-  ctx.fillStyle = sideColor;
-  drawRoundedRect(ctx, tagX, 22, tagW, 32, 6);
-  ctx.fill();
-
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 18px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(priceText, tagX + tagW / 2, 44);
-}
-
-function drawCandles(
-  ctx: CanvasRenderingContext2D,
-  candles: Candle[],
-  minPrice: number,
-  maxPrice: number,
-  area: ChartArea,
-) {
-  const recent = candles.slice(-CANDLE_COUNT);
-  const gap = area.width / recent.length;
-  const bodyWidth = Math.max(6, gap * 0.72);
-
-  recent.forEach((candle, i) => {
-    const x = area.x + i * gap + gap / 2;
-    const isUp = candle.close >= candle.open;
-
-    const highY = priceToY(candle.high, minPrice, maxPrice, area);
-    const lowY = priceToY(candle.low, minPrice, maxPrice, area);
-    const openY = priceToY(candle.open, minPrice, maxPrice, area);
-    const closeY = priceToY(candle.close, minPrice, maxPrice, area);
-
-    const bodyTop = Math.min(openY, closeY);
-    const bodyHeight = Math.max(2, Math.abs(closeY - openY));
-
-    ctx.strokeStyle = isUp ? COLORS.up : COLORS.down;
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x, highY);
-    ctx.lineTo(x, lowY);
-    ctx.stroke();
-
-    ctx.fillStyle = isUp ? COLORS.upBody : COLORS.downBody;
-    drawRoundedRect(ctx, x - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight, 1.5);
-    ctx.fill();
-  });
-}
-
-function drawVolume(
-  ctx: CanvasRenderingContext2D,
-  candles: Candle[],
-  area: ChartArea,
-) {
-  const recent = candles.slice(-CANDLE_COUNT);
-  const maxVol = Math.max(...recent.map((c) => c.volume), 1);
-  const volTop = area.y + area.height + 8;
-  const gap = area.width / recent.length;
-
-  ctx.fillStyle = COLORS.grid;
-  ctx.fillRect(area.x, volTop - 1, area.width, 1);
-
-  recent.forEach((candle, i) => {
-    const x = area.x + i * gap + gap / 2;
-    const barH = (candle.volume / maxVol) * (VOL_HEIGHT - 8);
-    const isUp = candle.close >= candle.open;
-    ctx.fillStyle = isUp ? "rgba(34,197,94,0.45)" : "rgba(239,68,68,0.45)";
-    const barW = Math.max(3, gap * 0.68);
-    ctx.fillRect(x - barW / 2, volTop + VOL_HEIGHT - barH, barW, barH);
-  });
-}
-
-function drawGrid(
-  ctx: CanvasRenderingContext2D,
-  minPrice: number,
-  maxPrice: number,
-  area: ChartArea,
-) {
-  const steps = 7;
-  const range = maxPrice - minPrice;
-
-  ctx.strokeStyle = COLORS.grid;
-  ctx.lineWidth = 1;
-  ctx.fillStyle = COLORS.text;
-  ctx.font = "12px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.textAlign = "right";
-
-  for (let i = 0; i <= steps; i++) {
-    const price = minPrice + (range * i) / steps;
-    const y = priceToY(price, minPrice, maxPrice, area);
-
-    ctx.beginPath();
-    ctx.moveTo(area.x, y);
-    ctx.lineTo(area.x + area.width, y);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(15,23,42,0.85)";
-    ctx.fillRect(WIDTH - 84, y - 9, 72, 18);
-    ctx.fillStyle = COLORS.textBright;
-    ctx.fillText(formatPrice(price), WIDTH - 16, y + 4);
-  }
-}
-
-function drawLevelLine(
-  ctx: CanvasRenderingContext2D,
-  level: LevelLine,
-  y: number,
-  area: ChartArea,
-) {
-  ctx.strokeStyle = level.color;
-  ctx.lineWidth = level.dashed ? 1.5 : 2;
-  ctx.setLineDash(level.dashed ? [8, 6] : []);
-  ctx.globalAlpha = level.dashed ? 0.85 : 1;
-
-  ctx.beginPath();
-  ctx.moveTo(area.x, y);
-  ctx.lineTo(area.x + area.width, y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.globalAlpha = 1;
-
-  const label = `${level.label}  ${formatPrice(level.price)}`;
-  ctx.font = "bold 11px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  const labelW = ctx.measureText(label).width + 12;
-
-  ctx.fillStyle = "rgba(15,23,42,0.9)";
-  drawRoundedRect(ctx, area.x + 6, y - 16, labelW, 18, 4);
-  ctx.fill();
-
-  ctx.fillStyle = level.color;
-  ctx.textAlign = "left";
-  ctx.fillText(label, area.x + 12, y - 3);
-}
-
-function drawEntryZone(
-  ctx: CanvasRenderingContext2D,
-  entryZone: [number, number],
-  entryType: string | null,
-  minPrice: number,
-  maxPrice: number,
-  area: ChartArea,
-) {
-  const topY = priceToY(entryZone[1], minPrice, maxPrice, area);
-  const bottomY = priceToY(entryZone[0], minPrice, maxPrice, area);
-  const boxH = Math.max(4, bottomY - topY);
-
-  ctx.fillStyle = "rgba(96,165,250,0.2)";
-  ctx.fillRect(area.x, topY, area.width, boxH);
-
-  ctx.strokeStyle = COLORS.entry;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 3]);
-  ctx.strokeRect(area.x, topY, area.width, boxH);
-  ctx.setLineDash([]);
-
-  const label = entryType?.toUpperCase() ?? "ENTRY";
-  ctx.font = "bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.fillStyle = COLORS.entry;
-  ctx.textAlign = "center";
-  ctx.fillText(label, area.x + area.width / 2, topY + boxH / 2 + 4);
-}
-
-function drawCurrentPriceLine(
-  ctx: CanvasRenderingContext2D,
-  currentPrice: number,
-  minPrice: number,
-  maxPrice: number,
-  area: ChartArea,
-  side: "long" | "short",
-) {
-  const y = priceToY(currentPrice, minPrice, maxPrice, area);
-  const color = side === "long" ? COLORS.up : COLORS.down;
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 3]);
-  ctx.beginPath();
-  ctx.moveTo(area.x, y);
-  ctx.lineTo(area.x + area.width, y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  const label = formatPrice(currentPrice);
-  ctx.font = "bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  const tagW = ctx.measureText(label).width + 14;
-  ctx.fillStyle = color;
-  drawRoundedRect(ctx, WIDTH - tagW - 12, y - 11, tagW, 22, 4);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.fillText(label, WIDTH - tagW / 2 - 12, y + 4);
-}
-
-export async function generateCanvasChart(
-  candles: Candle[],
-  analysis: EmaSmcAnalysis,
-): Promise<Buffer> {
-  const { canvas, ctx } = scaledCanvas();
-  const area = getChartArea();
-  const levels = collectLevels(analysis);
-  const { min, max, visibleLevels } = computePriceBounds(
-    candles,
-    levels,
-    analysis.entryZone,
-    analysis.currentPrice,
-  );
-
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  ctx.fillStyle = COLORS.watermark;
-  ctx.font = "bold 96px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("EasyTrade AI", WIDTH / 2, HEIGHT / 2 + 30);
-
-  drawHeader(ctx, analysis);
-  drawGrid(ctx, min, max, area);
-  drawVolume(ctx, candles, area);
-  drawCandles(ctx, candles, min, max, area);
-
-  if (analysis.entryZone) {
-    drawEntryZone(ctx, analysis.entryZone, analysis.entryType, min, max, area);
-  }
-
-  for (const level of visibleLevels) {
-    const y = priceToY(level.price, min, max, area);
-    if (y >= area.y - 2 && y <= area.y + area.height + 2) {
-      drawLevelLine(ctx, level, y, area);
-    }
-  }
-
-  if (analysis.side) {
-    drawCurrentPriceLine(
-      ctx,
-      analysis.currentPrice,
-      min,
-      max,
-      area,
-      analysis.side,
-    );
-  }
-
-  ctx.fillStyle = COLORS.text;
-  ctx.font = "11px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-  ctx.textAlign = "right";
-  ctx.fillText(
-    `Updated: ${new Date().toLocaleString("en-GB", { timeZone: "UTC" })} UTC`,
-    WIDTH - 16,
-    HEIGHT - 14,
-  );
-
-  return canvas.toBuffer("image/png", { compressionLevel: 3, resolution: 300 });
+export interface SignalChartInput {
+  title: string;
+  subtitle?: string;
+  side: "long" | "short";
+  candles: Candle[];
+  lines?: ChartLine[];
+  levels: ChartLevel[];
+  /** Kirish shamining openTime'i — belgi qo'yiladi. */
+  signalTime?: number;
+  /** Kirish shami ustidagi yozuv, masalan "SHORT PB". */
+  marker?: string;
+  /**
+   * TradingView "Long/Short Position" uslubidagi zonalar: kirish→stop qizil, kirish→target yashil.
+   * Kirish shamidan o'ngga, bo'sh joygacha cho'ziladi.
+   */
+  position?: { entry: number; stopLoss: number; target?: number | null; targetLabel?: string };
+  formatPrice: (p: number) => string;
 }
 
 /**
- * TradingView (chart-img.com) — asosiy manba.
- * API key bor, lekin plan/limit tugasa → null (faqat matn yuboriladi).
- * API key yo'q → canvas fallback.
+ * Serverless (Vercel) muhitida tizim shriftlari yo'q — yozuvlar chiqmay qoladi.
+ * Shrift loyiha ichida (next.config.ts → outputFileTracingIncludes).
  */
-export async function generateSignalChartImage(
-  candles: Candle[],
-  analysis: EmaSmcAnalysis,
-): Promise<Buffer | null> {
-  if (isTradingViewChartConfigured()) {
-    try {
-      return await fetchTradingViewChartForSymbol(
-        analysis.symbol,
-        analysis.marketType,
-        "5m",
-      );
-    } catch (error) {
-      console.warn(
-        "TradingView chart olinmadi (faqat matn yuboriladi):",
-        error instanceof Error ? error.message : error,
-      );
-      return null;
+const FONT_FAMILY = "ChartSans";
+const FONT = `${FONT_FAMILY}, sans-serif`;
+let fontRegistered = false;
+function ensureFont(): void {
+  if (fontRegistered) return;
+  fontRegistered = true;
+  try {
+    registerFont(path.join(process.cwd(), "lib/server/assets/fonts/Geist-Regular.ttf"), { family: FONT_FAMILY });
+  } catch (error) {
+    console.error("Grafik shrifti yuklanmadi:", error instanceof Error ? error.message : error);
+  }
+}
+
+const W = 1000;
+const H = 560;
+const PAD = { top: 64, right: 92, bottom: 30, left: 16 };
+/** Pozitsiya zonasi uchun grafik o'ngida qoldiriladigan bo'sh shamlar. */
+const POSITION_PAD_BARS = 20;
+const C = {
+  riskFill: "rgba(239, 68, 68, 0.16)",
+  rewardFill: "rgba(34, 197, 94, 0.14)",
+  bg: "#0f1115",
+  grid: "#1e222b",
+  text: "#e6e8ec",
+  muted: "#8a909c",
+  up: "#22c55e",
+  down: "#ef4444",
+};
+
+export const CHART_COLORS = {
+  entry: "#60a5fa",
+  stop: "#ef4444",
+  tp: "#22c55e",
+  ema20: "#facc15",
+  ema50: "#c084fc",
+} as const;
+
+export function renderSignalChart(input: SignalChartInput): Buffer {
+  const { candles } = input;
+  ensureFont();
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const n = candles.length;
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
+  const values: number[] = input.levels.map((l) => l.price);
+  if (input.position) {
+    values.push(input.position.entry, input.position.stopLoss);
+    if (input.position.target) values.push(input.position.target);
+  }
+  for (let i = 0; i < n; i++) {
+    values.push(candles[i]!.high, candles[i]!.low);
+    for (const ln of input.lines ?? []) {
+      const v = ln.values[i];
+      if (v !== undefined && Number.isFinite(v)) values.push(v);
+    }
+  }
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  const span = max - min || max * 0.01 || 1;
+  min -= span * 0.06;
+  max += span * 0.06;
+
+  const y = (p: number) => PAD.top + ((max - p) / (max - min)) * plotH;
+  const padBars = input.position ? POSITION_PAD_BARS : 0;
+  const step = plotW / Math.max(n + padBars, 1);
+  const x = (i: number) => PAD.left + step * i + step / 2;
+
+  // Grid + narx o'qi
+  ctx.font = `12px ${FONT}`;
+  ctx.textBaseline = "middle";
+  for (let k = 0; k <= 5; k++) {
+    const p = min + ((max - min) * k) / 5;
+    const yy = Math.round(y(p)) + 0.5;
+    ctx.strokeStyle = C.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, yy);
+    ctx.lineTo(W - PAD.right, yy);
+    ctx.stroke();
+    // Daraja yorlig'i bilan ustma-ust tushmasin
+    if (input.levels.some((l) => Math.abs(y(l.price) - yy) < 16)) continue;
+    ctx.fillStyle = C.muted;
+    ctx.fillText(input.formatPrice(p), W - PAD.right + 8, yy);
+  }
+
+  const si = input.signalTime !== undefined ? candles.findIndex((c) => c.openTime === input.signalTime) : -1;
+  const zoneX = si >= 0 ? x(si) - step / 2 : null;
+  // Quti eni TradingView'dagidek cheklangan: kirish shami + POSITION_PAD_BARS sham.
+  const zoneEnd = zoneX !== null ? Math.min(W - PAD.right, zoneX + step * (POSITION_PAD_BARS + 1)) : W - PAD.right;
+
+  // Pozitsiya zonalari (shamlar ostida)
+  if (input.position && zoneX !== null) {
+    const { entry, stopLoss, target } = input.position;
+    const zw = zoneEnd - zoneX;
+    const box = (a: number, b: number, fill: string) => {
+      const top = y(Math.max(a, b));
+      ctx.fillStyle = fill;
+      ctx.fillRect(zoneX, top, zw, y(Math.min(a, b)) - top);
+    };
+    box(entry, stopLoss, C.riskFill);
+    if (target) box(entry, target, C.rewardFill);
+  }
+
+  // Shamlar
+  const bodyW = Math.max(1, step * 0.62);
+  for (let i = 0; i < n; i++) {
+    const c = candles[i]!;
+    const color = c.close >= c.open ? C.up : C.down;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1;
+    const xx = Math.round(x(i)) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(xx, y(c.high));
+    ctx.lineTo(xx, y(c.low));
+    ctx.stroke();
+    const top = y(Math.max(c.open, c.close));
+    const h = Math.max(1, y(Math.min(c.open, c.close)) - top);
+    ctx.fillRect(x(i) - bodyW / 2, top, bodyW, h);
+  }
+
+  // Indikator chiziqlari
+  ctx.lineWidth = 2;
+  for (const ln of input.lines ?? []) {
+    for (let i = 1; i < n; i++) {
+      const a = ln.values[i - 1]!;
+      const b = ln.values[i]!;
+      const da = ln.dir?.[i - 1] ?? 1;
+      const db = ln.dir?.[i] ?? 1;
+      if (!Number.isFinite(a) || !Number.isFinite(b) || da !== db) continue;
+      ctx.strokeStyle = ln.dir ? (db === 1 ? C.up : C.down) : (ln.color ?? C.muted);
+      ctx.beginPath();
+      ctx.moveTo(x(i - 1), y(a));
+      ctx.lineTo(x(i), y(b));
+      ctx.stroke();
     }
   }
 
-  return generateCanvasChart(candles, analysis);
+  // Kirish va stop darajalari
+  // Pozitsiya bo'lsa chiziqlar faqat zona ichida (TradingView kabi), aks holda butun eni bo'ylab.
+  const levelStart = input.position && zoneX !== null ? zoneX : PAD.left;
+  const level = (price: number, color: string, label: string) => {
+    const yy = Math.round(y(price)) + 0.5;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(levelStart, yy);
+    ctx.lineTo(input.position ? zoneEnd : W - PAD.right, yy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color;
+    ctx.fillRect(W - PAD.right + 2, yy - 10, PAD.right - 4, 20);
+    ctx.fillStyle = "#0b0d10";
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.fillText(input.formatPrice(price), W - PAD.right + 8, yy);
+    ctx.font = `bold 12px ${FONT}`;
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = C.bg;
+    const labelX = input.position ? zoneEnd - 8 : W - PAD.right - 8;
+    ctx.fillRect(labelX - 4 - tw, yy - 19, tw + 8, 16);
+    ctx.fillStyle = color;
+    ctx.textAlign = "right";
+    ctx.fillText(label, labelX, yy - 10);
+    ctx.textAlign = "left";
+  };
+  for (const l of input.levels) level(l.price, l.color, l.label);
+
+  // Kirish shami belgisi: strelka + yozuv (long — sham ostida, short — ustida)
+  if (si >= 0) {
+    const c = candles[si]!;
+    const long = input.side === "long";
+    const color = long ? C.up : C.down;
+    const away = long ? 1 : -1; // shamdan uzoqlashish yo'nalishi (pastga/yuqoriga)
+    const tipY = long ? y(c.low) + 6 : y(c.high) - 6;
+    const tailY = tipY + 22 * away;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x(si), tailY);
+    ctx.lineTo(x(si), tipY + 8 * away);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x(si), tipY);
+    ctx.lineTo(x(si) - 6, tipY + 10 * away);
+    ctx.lineTo(x(si) + 6, tipY + 10 * away);
+    ctx.closePath();
+    ctx.fill();
+    if (input.marker) {
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = long ? "top" : "bottom";
+      const tw = ctx.measureText(input.marker).width;
+      const ty = tailY + 4 * away;
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(x(si) - tw / 2 - 4, long ? ty - 1 : ty - 16, tw + 8, 17);
+      ctx.fillStyle = color;
+      ctx.fillText(input.marker, x(si), ty);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+    }
+  }
+
+  // Zona ichidagi R yozuvlari
+  if (input.position && zoneX !== null) {
+    const { entry, stopLoss, target, targetLabel } = input.position;
+    const risk = Math.abs(entry - stopLoss);
+    const pct = (p: number) => {
+      const v = ((p - entry) / entry) * 100;
+      return `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
+    };
+    const tag = (text: string, ty: number) => {
+      const tw = ctx.measureText(text).width;
+      ctx.fillStyle = "rgba(15, 17, 21, 0.75)";
+      ctx.fillRect(right - tw - 12, ty - 10, tw + 12, 20);
+      ctx.fillStyle = C.text;
+      ctx.fillText(text, right - 6, ty);
+    };
+    // O'ng chetga tekislanadi — chap chetdagi kirish belgisi bilan to'qnashmasin.
+    const right = zoneEnd - 6;
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    tag(`Stop −1R  ${pct(stopLoss)}`, (y(entry) + y(stopLoss)) / 2);
+    if (target && risk > 0) {
+      const r = Math.abs(target - entry) / risk;
+      tag(`${targetLabel ?? "TP"} +${r.toFixed(1)}R  ${pct(target)}`, (y(entry) + y(target)) / 2);
+    }
+    ctx.textAlign = "left";
+  }
+
+  // Sarlavha
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.fillStyle = input.side === "long" ? C.up : C.down;
+  ctx.font = `bold 22px ${FONT}`;
+  ctx.fillText(input.title, PAD.left + 4, 32);
+  if (input.subtitle) {
+    ctx.fillStyle = C.muted;
+    ctx.font = `13px ${FONT}`;
+    ctx.fillText(input.subtitle, PAD.left + 4, 52);
+  }
+
+  // Chiziqlar izohi (o'ng yuqori burchak)
+  ctx.font = `12px ${FONT}`;
+  ctx.textAlign = "right";
+  let lx = W - PAD.right - 8;
+  for (const ln of [...(input.lines ?? [])].reverse()) {
+    if (!ln.label) continue;
+    ctx.fillStyle = ln.dir ? C.text : (ln.color ?? C.muted);
+    ctx.fillText(ln.label, lx, 32);
+    lx -= ctx.measureText(ln.label).width + 16;
+  }
+  ctx.textAlign = "left";
+
+  return canvas.toBuffer("image/png");
 }

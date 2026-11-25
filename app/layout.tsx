@@ -14,9 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EasyTrade AI — Kripto Trading Assistant",
-  description:
-    "Ko'p timeframe'li signal, backtest, watchlist, jurnal va AI yordamchi bilan kripto trading platformasi",
+  title: "FQ Signals — FQ Strategy v3 terminal",
+  description: "FQ Strategy v3 signal skaneri, savdo rejasi va Telegram bildirishnomalari",
 };
 
 export default function RootLayout({

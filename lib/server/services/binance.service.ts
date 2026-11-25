@@ -1,9 +1,11 @@
 import axios, { isAxiosError } from "axios";
 import { AppError } from "../utils/AppError";
 import type {
+  BinanceFundingRateRaw,
   BinanceKlineRaw,
   BinanceTicker24hrRaw,
   Candle,
+  FundingRate,
   MarketType,
   Ticker24hr,
 } from "../types/index";
@@ -44,21 +46,30 @@ function handleBinanceError(error: unknown): never {
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
-      throw new Error("Binance API ga ulanish vaqti tugadi");
+      throw new AppError("Binance API ga ulanish vaqti tugadi", 503);
     }
 
     if (!error.response) {
-      throw new Error(
+      throw new AppError(
         "Binance API ga ulanib bo'lmadi. Tarmoq xatosini tekshiring",
+        503,
       );
     }
 
-    throw new Error(
+    if (status === 451) {
+      throw new AppError(
+        "Binance API mintaqangizda cheklangan. Server regionini sin1/hnd1 ga o'rnating.",
+        503,
+      );
+    }
+
+    throw new AppError(
       `Binance API xatosi: ${error.response.status} ${error.response.statusText}`,
+      502,
     );
   }
 
-  throw new Error("Kutilmagan xato yuz berdi");
+  throw new AppError("Kutilmagan xato yuz berdi", 500);
 }
 
 /**
@@ -130,6 +141,81 @@ export async function getKlines(
   }
 }
 
+/** Highest `limit` each venue accepts for a single klines request. */
+export const MAX_KLINES_PER_REQUEST: Record<MarketType, number> = {
+  spot: 1000,
+  futures: 1500,
+};
+
+/** Highest `limit` the futures funding-rate endpoint accepts. */
+export const MAX_FUNDING_PER_REQUEST = 1000;
+
+/**
+ * One page of historical klines starting at `startTime`. Deliberately uncached:
+ * range requests are used to build multi-year datasets, and caching thousands of
+ * distinct pages would only grow memory without ever being reused.
+ */
+export async function getKlinesRange(
+  symbol: string,
+  interval: string,
+  startTime: number,
+  endTime: number,
+  marketType: MarketType = "futures",
+): Promise<Candle[]> {
+  try {
+    const { data } = await axios.get<BinanceKlineRaw[]>(
+      `${getBaseUrl(marketType)}${getKlinesPath(marketType)}`,
+      {
+        params: {
+          symbol: symbol.toUpperCase(),
+          interval,
+          startTime,
+          endTime,
+          limit: MAX_KLINES_PER_REQUEST[marketType],
+        },
+        timeout: 20_000,
+      },
+    );
+
+    return data.map(parseKline);
+  } catch (error) {
+    handleBinanceError(error);
+  }
+}
+
+/**
+ * One page of realised funding settlements (futures only). Funding is a real
+ * holding cost on perpetuals, so a backtest that ignores it overstates every
+ * trade that stays open across a settlement.
+ */
+export async function getFundingRateRange(
+  symbol: string,
+  startTime: number,
+  endTime: number,
+): Promise<FundingRate[]> {
+  try {
+    const { data } = await axios.get<BinanceFundingRateRaw[]>(
+      `${FUTURES_BASE_URL}/fapi/v1/fundingRate`,
+      {
+        params: {
+          symbol: symbol.toUpperCase(),
+          startTime,
+          endTime,
+          limit: MAX_FUNDING_PER_REQUEST,
+        },
+        timeout: 20_000,
+      },
+    );
+
+    return data.map((item) => ({
+      fundingTime: item.fundingTime,
+      rate: Number(item.fundingRate),
+    }));
+  } catch (error) {
+    handleBinanceError(error);
+  }
+}
+
 export async function get24hrTicker(
   symbol: string,
   marketType: MarketType = "spot",
@@ -170,6 +256,40 @@ export async function getAll24hrTickers(
     });
     return tickers;
   } catch (error) {
+    handleBinanceError(error);
+  }
+}
+
+interface FuturesExchangeInfoRaw {
+  symbols: { symbol: string; underlyingType?: string; contractType?: string; status?: string }[];
+}
+
+const CRYPTO_SYMBOLS_TTL_MS = 60 * 60_000;
+let cryptoSymbolsCache: { data: Set<string>; expiresAt: number } | null = null;
+
+/**
+ * Futures'dagi faqat kripto perpetual juftliklar (`underlyingType: "COIN"`).
+ * Binance endi metall, neft, aksiya ("TradFi": XAU, XAG, BZ, NVDA, DELL...) ham sotadi —
+ * strategiyalar ularda sinalmagan. Xato bo'lsa eski kesh qaytariladi.
+ */
+export async function getCryptoFuturesSymbols(): Promise<Set<string>> {
+  if (cryptoSymbolsCache && cryptoSymbolsCache.expiresAt > Date.now()) {
+    return cryptoSymbolsCache.data;
+  }
+  try {
+    const { data } = await axios.get<FuturesExchangeInfoRaw>(
+      `${FUTURES_BASE_URL}/fapi/v1/exchangeInfo`,
+      { timeout: 15_000 },
+    );
+    const symbols = new Set(
+      data.symbols
+        .filter((s) => s.underlyingType === "COIN" && s.contractType === "PERPETUAL" && s.status === "TRADING")
+        .map((s) => s.symbol),
+    );
+    cryptoSymbolsCache = { data: symbols, expiresAt: Date.now() + CRYPTO_SYMBOLS_TTL_MS };
+    return symbols;
+  } catch (error) {
+    if (cryptoSymbolsCache) return cryptoSymbolsCache.data;
     handleBinanceError(error);
   }
 }

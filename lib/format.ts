@@ -35,6 +35,22 @@ export function formatNumber(value: number, digits: number = 2): string {
   });
 }
 
+/**
+ * Position size in base units. Coins differ by orders of magnitude — 0.04 BTC and
+ * 12 400 DOGE both need to stay readable — so precision follows magnitude.
+ */
+export function formatQuantity(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+
+  const abs = Math.abs(value);
+  const digits = abs >= 1_000 ? 0 : abs >= 1 ? 2 : abs >= 0.01 ? 4 : 6;
+
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 export function formatDate(value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   return date.toLocaleString("en-GB", {

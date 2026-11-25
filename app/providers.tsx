@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { useAuthStore } from "@/lib/store/auth";
 
@@ -29,14 +29,13 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const queryClientRef = useRef<QueryClient>(null);
-  queryClientRef.current ??= makeQueryClient();
+  const [queryClient] = useState(makeQueryClient);
 
   return (
-    <QueryClientProvider client={queryClientRef.current}>
+    <QueryClientProvider client={queryClient}>
       <ThemeProvider
         attribute="class"
-        defaultTheme="system"
+        defaultTheme="dark"
         enableSystem
         disableTransitionOnChange
       >

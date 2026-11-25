@@ -1,5 +1,5 @@
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { ScannerView } from "@/components/fq/ScannerView";
 
 export default function DashboardPage() {
-  return <DashboardView />;
+  return <ScannerView />;
 }

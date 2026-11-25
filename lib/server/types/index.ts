@@ -1,3 +1,5 @@
+// ───────────── Binance ─────────────
+
 export interface Candle {
   openTime: number;
   open: number;
@@ -36,178 +38,29 @@ export interface BinanceTicker24hrRaw {
   quoteVolume: string;
 }
 
-export type Trend = "bullish" | "bearish" | "neutral";
+/** Binance /fapi/v1/fundingRate raw response item */
+export interface BinanceFundingRateRaw {
+  symbol: string;
+  fundingRate: string;
+  fundingTime: number;
+}
+
+/** One realised funding settlement. `rate` is a fraction, not a percent. */
+export interface FundingRate {
+  fundingTime: number;
+  rate: number;
+}
+
 export type VolumeStatus = "high" | "normal" | "low";
 export type MarketType = "spot" | "futures";
 export type TradeSide = "long" | "short" | null;
-
-export type PatternDirection = "bullish" | "bearish";
-
-export type PatternType =
-  | "bullish_engulfing"
-  | "bearish_engulfing"
-  | "hammer"
-  | "shooting_star";
-
-export interface CandlePattern {
-  type: PatternType;
-  label: string;
-  direction: PatternDirection;
-  volumeConfirmed: boolean;
-}
 
 export interface SupportResistance {
   support: number;
   resistance: number;
 }
 
-export interface PositionSizingParams {
-  currentPrice: number;
-  stopLoss: number;
-  capital: number;
-  riskPercent: number;
-  marketType: MarketType;
-}
-
-export interface FuturesGuidance {
-  suggestedLeverage: number;
-  maxSafeLeverage: number;
-  requiredMargin: number;
-  note: string;
-}
-
-export interface PositionSizingResult {
-  positionSize: number;
-  riskAmount: number;
-  notional: number;
-  futures?: FuturesGuidance;
-  warning?: string;
-}
-
-export interface AnalysisIndicators {
-  ema50: number;
-  ema200: number;
-  rsi: number;
-  atr: number;
-  support: number;
-  resistance: number;
-  volumeStatus: VolumeStatus;
-}
-
-export interface AnalysisRisk {
-  stopLoss: number;
-  takeProfit: number;
-  positionSize: number;
-  riskAmount: number;
-  notional: number;
-  riskRewardRatio: number;
-  futures?: FuturesGuidance;
-}
-
-export interface AnalysisInput {
-  symbol: string;
-  currentPrice: number;
-  trend: string;
-  marketType: string;
-  indicators: AnalysisIndicators;
-  risk: AnalysisRisk;
-  strategy: StrategyInfo;
-  verdict: VerdictInfo;
-}
-
-export interface AnalyzeRequestBody {
-  symbol: string;
-  capital?: number;
-  riskPercent?: number;
-  interval?: string;
-  marketType?: MarketType;
-}
-
-export type StrategyType =
-  | "trend_pullback"
-  | "breakout_retest"
-  | "ema_crossover"
-  | "rsi_divergence";
-
-export interface StrategyChecklistItem {
-  label: string;
-  passed: boolean;
-  detail: string;
-}
-
-export interface StrategyInfo {
-  type: StrategyType;
-  label: string;
-  description: string;
-  confidence: number;
-  checklist: StrategyChecklistItem[];
-}
-
-export interface VerdictInfo {
-  verdict: "enter" | "wait" | "avoid";
-  verdictLabel: string;
-  side: TradeSide;
-  headline: string;
-  reason: string;
-  rrNow: number;
-  rrIdeal: number;
-  entryZone: [number, number];
-  invalidation: number;
-  stopLoss: number;
-  takeProfit: number;
-  pattern?: CandlePattern | null;
-  confluence?: number;
-  htfTrend?: Trend;
-  htfInterval?: string;
-  mtfNote?: string;
-  btcTrend?: Trend;
-  btcAligned?: boolean;
-  btcNote?: string;
-}
-
-export interface ScreenerCoinResult {
-  symbol: string;
-  currentPrice: number;
-  priceChangePercent: number;
-  trend: Trend;
-  verdict: "enter" | "wait" | "avoid";
-  verdictLabel: string;
-  side: TradeSide;
-  reason: string;
-  rrNow: number;
-  rrIdeal: number;
-  rsi: number;
-  strategy: StrategyInfo;
-  volumeStatus: VolumeStatus;
-  quoteVolume: number;
-  opportunityScore: number;
-}
-
-export interface ScreenerResponse {
-  scanned: number;
-  interval: string;
-  marketType: MarketType;
-  updatedAt: string;
-  coins: ScreenerCoinResult[];
-}
-
-export interface EquityPoint {
-  date: string;
-  cumulativePnl: number;
-}
-
-export interface JournalStats {
-  totalTrades: number;
-  openTrades: number;
-  closedTrades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  avgR: number;
-  expectancy: number;
-  totalPnl: number;
-  equityCurve: EquityPoint[];
-}
+// ───────────── Auth ─────────────
 
 export interface UserSettings {
   capital: number;
@@ -228,173 +81,167 @@ export interface AuthResponse {
   user: PublicUser;
 }
 
-export type InvestHorizon = "1_3" | "3_6" | "6_12" | "12_24";
+// ───────────── FQ Strategy v3 ─────────────
 
-export type InvestVerdict = "accumulate" | "dca_wait" | "avoid";
+export type FqVerdict = "enter" | "wait" | "avoid";
+export type FqSetupType = "pullback" | "breakout";
 
-export interface DcaTranche {
+export interface StrategyChecklistItem {
   label: string;
-  price: number;
-  allocationPercent: number;
-  amountUsd: number;
-  units: number;
-  note: string;
+  passed: boolean;
+  detail: string;
 }
 
-export interface InvestTarget {
-  label: string;
-  price: number;
-  upsidePercent: number;
-}
-
-export interface InvestAnalysis {
-  symbol: string;
-  horizon: InvestHorizon;
-  horizonLabel: string;
-  currentPrice: number;
-  verdict: InvestVerdict;
-  verdictLabel: string;
-  score: number;
-  reason: string;
-  trend: Trend;
-  weeklyRsi: number;
-  high52w: number;
-  low52w: number;
-  drawdownFromHigh: number;
-  supportZones: number[];
-  targets: InvestTarget[];
-  invalidation: number;
-  maxLossPercent: number;
-  averageEntry: number;
-  dcaPlan: DcaTranche[];
-  checklist: StrategyChecklistItem[];
-  btcTrend: Trend;
-  generatedAt: string;
-}
-
-export interface InvestScreenerCoinResult {
-  symbol: string;
-  currentPrice: number;
-  priceChangePercent: number;
-  quoteVolume: number;
-  horizon: InvestHorizon;
-  horizonLabel: string;
-  verdict: InvestVerdict;
-  verdictLabel: string;
-  score: number;
-  reason: string;
-  trend: Trend;
-  weeklyRsi: number;
-  drawdownFromHigh: number;
-  topTargetUpside: number;
-  opportunityScore: number;
-}
-
-export interface InvestScreenerResponse {
-  scanned: number;
-  horizon: InvestHorizon;
-  btcTrend: Trend;
-  updatedAt: string;
-  coins: InvestScreenerCoinResult[];
-}
-
-export interface BacktestStrategyStat {
-  strategy: StrategyType;
-  label: string;
-  trades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  avgR: number;
-  expectancy: number;
-}
-
-export interface BacktestSummary {
-  symbol: string;
-  interval: string;
-  marketType: MarketType;
-  candlesAnalyzed: number;
-  trades: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  avgR: number;
-  expectancy: number;
-  byStrategy: BacktestStrategyStat[];
-  generatedAt: string;
-}
-
-export type CustomStrategyId = "ema_smc";
-
-export type EmaSmcVerdict = "enter" | "wait" | "avoid";
-
-export interface StrategyDefinition {
-  id: CustomStrategyId;
-  name: string;
-  shortName: string;
-  description: string;
-  timeframes: string;
-  checklist: string[];
-  minRiskReward: number;
-  riskPercent: number;
-}
-
-export interface StrategiesListResponse {
-  strategies: StrategyDefinition[];
-}
-
-export interface EmaSmcScreenerCoinResult {
-  symbol: string;
-  currentPrice: number;
-  priceChangePercent: number;
-  quoteVolume: number;
-  side: TradeSide;
-  verdict: EmaSmcVerdict;
-  verdictLabel: string;
-  score: number;
-  reason: string;
-  trendDirection: "bullish" | "bearish";
-  riskReward: number;
-  entryType: "fvg" | "ob" | null;
-  stopLoss: number;
-  takeProfit: number;
-  sweep: { level: number; levelType: string } | null;
-  structure: { type: "bos" | "choch"; level: number } | null;
-  opportunityScore: number;
-}
-
-export interface EmaSmcScreenerResponse {
-  strategyId: CustomStrategyId;
-  scanned: number;
-  marketType: MarketType;
-  updatedAt: string;
-  coins: EmaSmcScreenerCoinResult[];
-}
-
-export interface EmaSmcAnalysisResponse {
+export interface FqAnalysisResponse {
+  strategyId: "fq_v3";
   symbol: string;
   marketType: MarketType;
   currentPrice: number;
   side: TradeSide;
-  verdict: EmaSmcVerdict;
+  verdict: FqVerdict;
   verdictLabel: string;
   score: number;
   reason: string;
-  ema200: number;
-  trendDirection: "bullish" | "bearish";
-  keyLevels: {
-    pdh: number;
-    pdl: number;
-    eqh: number | null;
-    eql: number | null;
+  timeframe: string;
+  htfTimeframe: string;
+  trend: "up" | "down" | "neutral";
+  htfBias: "bullish" | "bearish" | null;
+  setup: FqSetupType | null;
+  signalBarsAgo: number | null;
+  /** Signal shamining openTime (ms) — dedupe kaliti. */
+  signalTime: number | null;
+  /** Oxirgi yopilgan shamning openTime (ms). */
+  candleTime: number | null;
+  indicators: {
+    emaFast: number;
+    emaMid: number;
+    emaSlow: number;
+    rsi: number;
+    adx: number;
+    diPlus: number;
+    diMinus: number;
+    atr: number;
   };
-  sweep: { level: number; levelType: string } | null;
-  structure: { type: "bos" | "choch"; level: number } | null;
-  entryType: "fvg" | "ob" | null;
-  entryZone: [number, number] | null;
+  entry: number;
   stopLoss: number;
+  tp1: number;
+  tp2: number;
   takeProfit: number;
   riskReward: number;
+  riskPercent: number;
   checklist: StrategyChecklistItem[];
   generatedAt: string;
+}
+
+export interface FqScanCoin extends FqAnalysisResponse {
+  priceChangePercent: number;
+  quoteVolume: number;
+}
+
+export interface FqScanResponse {
+  marketType: MarketType;
+  scanned: number;
+  updatedAt: string;
+  coins: FqScanCoin[];
+  stats: {
+    enter: number;
+    wait: number;
+    avoid: number;
+    longBias: number;
+    shortBias: number;
+  };
+}
+
+// ───────────── Day trade (Supertrend 15M) ─────────────
+
+export interface DayAnalysis {
+  strategyId: "st_day";
+  symbol: string;
+  marketType: MarketType;
+  currentPrice: number;
+  timeframe: string;
+  htfTimeframe: string;
+  htfBias: "bullish" | "bearish" | null;
+  /** Hozirgi Supertrend yo'nalishi. */
+  stDir: "up" | "down" | null;
+  /** Hozirgi Supertrend chizig'i (trailing stop). */
+  stLine: number;
+  /** 1H trend tomonga oxirgi flip necha sham oldin (topilmasa null). */
+  flipBarsAgo: number | null;
+  side: TradeSide;
+  verdict: FqVerdict;
+  reason: string;
+  /** Flip shamining openTime (ms) — dedupe kaliti. */
+  signalTime: number | null;
+  entry: number;
+  stopLoss: number;
+  /** Kirishdan hozirgi narxgacha, R da (flip bo'lsa). */
+  currentR: number | null;
+  riskPercent: number;
+  priceChangePercent: number;
+  quoteVolume: number;
+  generatedAt: string;
+}
+
+export interface DayScanResponse {
+  marketType: MarketType;
+  scanned: number;
+  updatedAt: string;
+  coins: DayAnalysis[];
+  stats: { enter: number; inTrade: number; waiting: number; avoid: number };
+}
+
+// ───────────── Signal tarixi ─────────────
+
+export type StrategyId = "fq_v3" | "st_day";
+
+export type SignalStatus = "open" | "tp1" | "tp2" | "be" | "sl" | "exit" | "expired";
+
+export interface SignalRecord {
+  id: string;
+  strategy: StrategyId;
+  symbol: string;
+  marketType: MarketType;
+  side: "long" | "short";
+  setup: FqSetupType | null;
+  signalTime: string;
+  entry: number;
+  stopLoss: number;
+  /** Day trade signallarida TP yo'q — null. */
+  tp1: number | null;
+  tp2: number | null;
+  score: number;
+  status: SignalStatus;
+  /** Yopilgan savdo natijasi R da (TP1 50% + qolgan qism). Ochiq bo'lsa null. */
+  resultR: number | null;
+  telegramSent: boolean;
+  sentAt: string;
+  closedAt: string | null;
+}
+
+export interface SignalsResponse {
+  signals: SignalRecord[];
+  stats: {
+    total: number;
+    open: number;
+    closed: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+    totalR: number;
+    avgR: number;
+  };
+  telegram: {
+    configured: boolean;
+    enabled: boolean;
+  };
+}
+
+export interface SignalRunResult {
+  scanned: number;
+  newSignals: number;
+  sent: number;
+  updated: number;
+  errors: string[];
+  ranAt: string;
 }

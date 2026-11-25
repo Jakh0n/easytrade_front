@@ -1,6 +1,4 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { evaluateAlerts } from "../services/alert.service";
-import { evaluateTelegramSignalHub } from "../services/telegram-hub.service";
 import {
   getKeepAliveHealthUrl,
   pingHealthEndpoint,
@@ -8,72 +6,52 @@ import {
 import { isDatabaseConnected } from "./db";
 import { env } from "./env";
 
-const ALERT_CRON = "* * * * *"; // every minute
-const KEEP_ALIVE_CRON = "*/14 * * * *"; // every 14 minutes
+const KEEP_ALIVE_CRON = "*/14 * * * *";
 
-let alertTask: ScheduledTask | null = null;
 let keepAliveTask: ScheduledTask | null = null;
 let signalTask: ScheduledTask | null = null;
+let running = false;
 
+function logError(label: string, error: unknown): void {
+  console.error(label, error instanceof Error ? error.message : error);
+}
+
+/**
+ * Doimiy ishlaydigan serverda (lokal `npm run dev`, Render, VPS) signal siklini
+ * o'zi ishga tushiradi. Vercel serverless'da bu jarayon yashamaydi — u yerda
+ * tashqi cron /api/signals/run ni chaqiradi (README ga qarang).
+ */
 export function startSchedulers(): void {
-  alertTask = cron.schedule(ALERT_CRON, () => {
-    if (!isDatabaseConnected()) {
-      return;
-    }
-
-    void evaluateAlerts().catch((error) => {
-      console.error(
-        "Alert baholash xatosi:",
-        error instanceof Error ? error.message : error,
-      );
-    });
-  });
+  if (process.env.VERCEL) return;
 
   if (env.TELEGRAM_SIGNALS_ENABLED && cron.validate(env.TELEGRAM_SIGNAL_CRON)) {
     signalTask = cron.schedule(env.TELEGRAM_SIGNAL_CRON, () => {
-      if (!isDatabaseConnected()) {
-        return;
-      }
-
-      void evaluateTelegramSignalHub().catch((error) => {
-        console.error(
-          "Strategiya signal xatosi:",
-          error instanceof Error ? error.message : error,
-        );
-      });
+      if (running || !isDatabaseConnected()) return;
+      running = true;
+      void import("../services/fq-signal.service")
+        .then(({ runSignalCycle }) => runSignalCycle())
+        .then((result) => {
+          if (result.newSignals || result.updated || result.errors.length) {
+            console.log("FQ signal sikli:", JSON.stringify(result));
+          }
+        })
+        .catch((error) => logError("FQ signal sikli xatosi:", error))
+        .finally(() => {
+          running = false;
+        });
     });
-
-    console.log(
-      `Telegram Signal Hub yoqildi (cron: ${env.TELEGRAM_SIGNAL_CRON}, ema_smc: ${env.TELEGRAM_SEND_EMA_SMC}, screener: ${env.TELEGRAM_SEND_SCREENER})`,
-    );
+    console.log(`FQ signal cron yoqildi: ${env.TELEGRAM_SIGNAL_CRON}`);
   }
 
   const keepAliveUrl = getKeepAliveHealthUrl();
   if (keepAliveUrl) {
     keepAliveTask = cron.schedule(KEEP_ALIVE_CRON, () => {
-      void pingHealthEndpoint().catch((error) => {
-        console.error(
-          "Keep-alive ping xatosi:",
-          error instanceof Error ? error.message : error,
-        );
-      });
-    });
-
-    console.log(`Keep-alive yoqildi: ${keepAliveUrl} (har 14 daqiqa)`);
-
-    // Birinchi ping — deploy yoki cold start'dan keyin idle taymerni reset qiladi.
-    void pingHealthEndpoint().catch((error) => {
-      console.error(
-        "Keep-alive boshlang'ich ping xatosi:",
-        error instanceof Error ? error.message : error,
-      );
+      void pingHealthEndpoint().catch((error) => logError("Keep-alive ping xatosi:", error));
     });
   }
 }
 
 export function stopSchedulers(): void {
-  alertTask?.stop();
-  alertTask = null;
   keepAliveTask?.stop();
   keepAliveTask = null;
   signalTask?.stop();

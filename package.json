@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
-    "test:server": "jest --selectProjects server"
+    "test:server": "jest lib/server/__tests__",
+    "backtest": "tsx lib/server/scripts/run-backtest.ts",
+    "backtest:xs": "tsx lib/server/scripts/run-cross-sectional.ts",
+    "backtest:xs:sweep": "tsx lib/server/scripts/run-cross-sectional-sweep.ts",
+    "character-scan": "tsx lib/server/scripts/run-character-scan.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
@@ -55,6 +59,7 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.11",
     "typescript": "^5"
   }
 }
