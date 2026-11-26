@@ -33,8 +33,6 @@ const envSchema = z.object({
   FQ_1H_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 4H + Fib signallari. */
   FQ_4H_SIGNALS_ENABLED: boolFromEnv(true),
-  /** Lokal/doimiy serverda node-cron jadvali. Vercel'da tashqi cron ishlatiladi. */
-  TELEGRAM_SIGNAL_CRON: z.string().default("*/5 * * * *"),
   /** /api/signals/run ni himoyalaydi: `Authorization: Bearer <CRON_SECRET>`. */
   CRON_SECRET: z.string().min(16).optional(),
   /** true bo'lsa yangi foydalanuvchilar ro'yxatdan o'ta oladi (default: faqat birinchisi). */
