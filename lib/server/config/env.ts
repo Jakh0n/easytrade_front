@@ -29,6 +29,8 @@ const envSchema = z.object({
   TELEGRAM_MAX_SIGNALS_PER_DAY: z.coerce.number().min(1).max(100).default(20),
   /** Day trade (Supertrend 15M) signallari — signal siklida FQ v3 bilan birga ishlaydi. */
   DAY_SIGNALS_ENABLED: boolFromEnv(true),
+  /** Day 15M (FQ v3, Pine "Day trading rejimi") signallari. */
+  FQ_15M_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 1H (FQ v3) signallari. */
   FQ_1H_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 4H + Fib signallari. */

@@ -106,6 +106,22 @@ export const FQ_SWING_CONFIG: FqConfig = {
  */
 export const FQ_4H_CONFIG: FqConfig = { ...FQ_SWING_CONFIG, useFibZone: true };
 
+/**
+ * Day 15M: Pine'dagi "⚡ Day trading rejimi" (7-bo'lim) sozlamalari — 15M shamlar,
+ * katta TF 1H EMA200, qattiqroq ADX/cho'zilish filtri, qisqaroq swing stop va 2R TP2.
+ */
+export const FQ_15M_CONFIG: FqConfig = {
+  ...FQ_SWING_CONFIG,
+  adxMin: 22,
+  extMaxAtr: 1.5,
+  swingLen: 8,
+  minRiskAtr: 1.0,
+  maxRiskAtr: 2.5,
+  tp1R: 1.0,
+  tp2R: 2.0,
+  riskPct: 0.75,
+};
+
 export type FqHtfBias = "bullish" | "bearish" | null;
 export type FqSetup = "pullback" | "breakout" | "sweep";
 

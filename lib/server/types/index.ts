@@ -93,8 +93,8 @@ export interface StrategyChecklistItem {
 }
 
 export interface FqAnalysisResponse {
-  /** fq_v3 = Swing 1H, fq_4h = Swing 4H + Fib (bitta dvigatel, turli profil). */
-  strategyId: "fq_v3" | "fq_4h";
+  /** fq_15m = Day 15M, fq_v3 = Swing 1H, fq_4h = Swing 4H + Fib (bitta dvigatel, turli profil). */
+  strategyId: "fq_15m" | "fq_v3" | "fq_4h";
   symbol: string;
   marketType: MarketType;
   currentPrice: number;
@@ -196,7 +196,7 @@ export interface DayScanResponse {
 
 // ───────────── Signal tarixi ─────────────
 
-export type StrategyId = "fq_v3" | "fq_4h" | "smc_4h" | "st_day";
+export type StrategyId = "fq_15m" | "fq_v3" | "fq_4h" | "smc_4h" | "st_day";
 
 /** pending — limit order kutilmoqda (SMC); cancelled — to'lmasdan bekor bo'ldi. */
 export type SignalStatus = "pending" | "cancelled" | "open" | "tp1" | "tp2" | "be" | "sl" | "exit" | "expired";
