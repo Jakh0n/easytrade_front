@@ -1,5 +1,6 @@
 import { getKlines } from "./binance.service";
 import {
+  FQ_4H_CONFIG,
   FQ_SWING_CONFIG,
   computeFqLevels,
   computeFqSeries,
@@ -24,9 +25,47 @@ const VERDICT_LABELS: Record<FqAnalysisResponse["verdict"], string> = {
   avoid: "Kirmaslik",
 };
 
-export const FQ_INTERVAL = "1h";
-const ANALYSIS_INTERVAL = FQ_INTERVAL;
-const HTF_INTERVAL = "4h";
+export type FqStrategyId = FqAnalysisResponse["strategyId"];
+
+/** Bir xil FQ dvigateli, turli timeframe va filtrlar — har biri alohida strategiya. */
+export interface FqProfile {
+  id: FqStrategyId;
+  interval: string;
+  htfInterval: string;
+  intervalMs: number;
+  config: FqConfig;
+  /** Telegram va UI uchun qisqa nom. */
+  label: string;
+  /** Faqat shu coinlar skanerlanadi (backtest qilinganlari); null — hajm bo'yicha top. */
+  symbols: readonly string[] | null;
+}
+
+export const FQ_PROFILES: Record<FqStrategyId, FqProfile> = {
+  fq_v3: {
+    id: "fq_v3",
+    interval: "1h",
+    htfInterval: "4h",
+    intervalMs: 3_600_000,
+    config: FQ_SWING_CONFIG,
+    label: "Swing 1H · FQ v3",
+    symbols: null,
+  },
+  fq_4h: {
+    id: "fq_4h",
+    interval: "4h",
+    htfInterval: "1d",
+    intervalMs: 4 * 3_600_000,
+    config: FQ_4H_CONFIG,
+    label: "Swing 4H · FQ v3 + Fib",
+    symbols: [
+      "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT",
+      "LINKUSDT", "AVAXUSDT", "DOTUSDT", "LTCUSDT", "BCHUSDT", "NEARUSDT", "UNIUSDT",
+      "AAVEUSDT", "ATOMUSDT", "FILUSDT", "ETCUSDT", "SUIUSDT", "TRXUSDT",
+    ],
+  },
+};
+
+export const FQ_INTERVAL = FQ_PROFILES.fq_v3.interval;
 const ANALYSIS_LIMIT = 500;
 const HTF_EMA_LEN = 200;
 /** Pine'dagi cooldown (3 sham) — shu oraliqdagi signal hali "yangi" hisoblanadi. */
@@ -62,7 +101,7 @@ function preferredSide(
   return side;
 }
 
-function setupOf(state: FqBarState, side: TradeSide): FqSetup | null {
+function setupOf(state: FqBarState, side: TradeSide): Exclude<FqSetup, "sweep"> | null {
   if (side === "long") {
     if (state.boLong) return "breakout";
     if (state.pbLong) return "pullback";
@@ -86,8 +125,9 @@ function buildChecklist(params: {
   trigger: FqSetup | null;
   riskOk: boolean;
   config: FqConfig;
+  htfInterval: string;
 }): StrategyChecklistItem[] {
-  const { state, side, htfBias, trigger, riskOk, config } = params;
+  const { state, side, htfBias, trigger, riskOk, config, htfInterval } = params;
   const long = side === "long";
   const emaAligned = long
     ? state.close > state.emaSlow && state.emaMid > state.emaSlow
@@ -106,7 +146,7 @@ function buildChecklist(params: {
         : "EMA tartibi trendni tasdiqlamaydi",
     },
     {
-      label: `Katta TF (${HTF_INTERVAL.toUpperCase()}) EMA ${HTF_EMA_LEN}`,
+      label: `Katta TF (${htfInterval.toUpperCase()}) EMA ${HTF_EMA_LEN}`,
       passed: htfOk,
       detail: htfOk
         ? "Katta timeframe bir xil yo'nalishda"
@@ -139,6 +179,20 @@ function buildChecklist(params: {
             ? "Narx EMA 20 ga qaytib, tasdiqlovchi sham yopdi"
             : "Trigger sham hali yo'q",
     },
+    ...(config.useFibZone
+      ? [
+          {
+            label: `Fib ${config.fibMin ?? 0.5}–${config.fibMax ?? 0.786} zona`,
+            passed:
+              trigger !== "pullback" ||
+              ((long ? state.fibLong : state.fibShort) >= (config.fibMin ?? 0.5) &&
+                (long ? state.fibLong : state.fibShort) <= (config.fibMax ?? 0.786)),
+            detail: Number.isFinite(long ? state.fibLong : state.fibShort)
+              ? `Pullback impulsning ${(long ? state.fibLong : state.fibShort).toFixed(2)} darajasida`
+              : "Impuls aniqlanmadi",
+          },
+        ]
+      : []),
     {
       label: `Stop ≤ ${config.maxRiskAtr} ATR`,
       passed: riskOk,
@@ -162,6 +216,7 @@ export function buildFqFromCandles(
   candles: Candle[],
   htfCandles: Candle[],
   config: FqConfig = FQ_SWING_CONFIG,
+  profile: FqProfile = FQ_PROFILES.fq_v3,
 ): FqAnalysisResponse {
   const htfBias = computeHtfBias(htfCandles, HTF_EMA_LEN);
   const series = computeFqSeries(candles, config);
@@ -171,12 +226,12 @@ export function buildFqFromCandles(
   const currentPrice = candles.at(-1)?.close ?? 0;
 
   const base = {
-    strategyId: "fq_v3" as const,
+    strategyId: profile.id,
     symbol: symbol.toUpperCase(),
     marketType,
     currentPrice,
-    timeframe: ANALYSIS_INTERVAL,
-    htfTimeframe: HTF_INTERVAL,
+    timeframe: profile.interval,
+    htfTimeframe: profile.htfInterval,
     htfBias,
     riskPercent: config.riskPct,
     candleTime: candles.at(-1)?.openTime ?? null,
@@ -213,6 +268,7 @@ export function buildFqFromCandles(
       tp2: 0,
       takeProfit: 0,
       riskReward: 0,
+      confluences: [],
       checklist: [],
     };
   }
@@ -240,6 +296,7 @@ export function buildFqFromCandles(
     trigger,
     riskOk: levels.riskOk,
     config,
+    htfInterval: profile.htfInterval,
   });
   const score = computeScore(checklist);
 
@@ -308,7 +365,8 @@ export function buildFqFromCandles(
     tp1: levels.tp1,
     tp2: levels.tp2,
     takeProfit: levels.tp2,
-    riskReward: config.tp2R,
+    riskReward: Number(((levels.tp2 - levels.entry) / (levels.entry - levels.stopLoss)).toFixed(2)),
+    confluences: side === "long" ? levelState.confluencesLong : levelState.confluencesShort,
     checklist,
   };
 }
@@ -316,10 +374,12 @@ export function buildFqFromCandles(
 export async function buildFqAnalysis(
   symbol: string,
   marketType: MarketType = "futures",
+  strategy: FqStrategyId = "fq_v3",
 ): Promise<FqAnalysisResponse> {
+  const profile = FQ_PROFILES[strategy];
   const [raw, htfRaw] = await Promise.all([
-    getKlines(symbol, ANALYSIS_INTERVAL, ANALYSIS_LIMIT, marketType),
-    getKlines(symbol, HTF_INTERVAL, ANALYSIS_LIMIT, marketType),
+    getKlines(symbol, profile.interval, ANALYSIS_LIMIT, marketType),
+    getKlines(symbol, profile.htfInterval, ANALYSIS_LIMIT, marketType),
   ]);
-  return buildFqFromCandles(symbol, marketType, closedCandles(raw), closedCandles(htfRaw));
+  return buildFqFromCandles(symbol, marketType, closedCandles(raw), closedCandles(htfRaw), profile.config, profile);
 }

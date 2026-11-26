@@ -6,7 +6,7 @@ import { calculateEMA } from "./indicators.service";
 import { runFqScan } from "./fq-scanner.service";
 import { runDayScan } from "./day.strategy.service";
 import { DAY_BAR_MS, DAY_CONFIG, computeSupertrend, evaluateDayOutcome } from "./day-strategy/engine";
-import { FQ_INTERVAL } from "./fq.strategy.service";
+import { FQ_PROFILES, type FqProfile, type FqStrategyId } from "./fq.strategy.service";
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "./fq-strategy/outcome";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type {
@@ -20,7 +20,6 @@ import type {
   StrategyId,
 } from "../types/index";
 
-const HOUR_MS = 3_600_000;
 /** Day signal natijasini hisoblashda Supertrend uchun isitish shamlari. */
 const DAY_WARMUP_BARS = 250;
 
@@ -74,10 +73,12 @@ export function buildSignalMessage(coin: FqScanCoin): string {
   const setup = coin.setup === "breakout" ? "Breakout" : "Pullback";
   const htf = coin.htfBias === "bullish" ? "bullish" : coin.htfBias === "bearish" ? "bearish" : "—";
   const url = coinUrl(coin.symbol);
+  const profile = FQ_PROFILES[coin.strategyId];
 
   const lines = [
     `${long ? "🟢" : "🔴"} <b>${long ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(coin.symbol))}</b> — ${setup}`,
-    `<i>FQ Strategy v3 · ${coin.timeframe.toUpperCase()} kirish · ${coin.htfTimeframe.toUpperCase()} trend ${htf}</i>`,
+    `📌 <b>${escapeHtml(profile.label)}</b>`,
+    `<i>${coin.timeframe.toUpperCase()} kirish · ${coin.htfTimeframe.toUpperCase()} trend ${htf}${coin.confluences.length ? ` · ${escapeHtml(coin.confluences.join(" · "))}` : ""}</i>`,
     "",
     `Kirish:  <code>${formatSignalPrice(coin.entry)}</code>`,
     `Stop:    <code>${formatSignalPrice(coin.stopLoss)}</code>  (${pctFrom(coin.entry, coin.stopLoss)})`,
@@ -98,6 +99,7 @@ export function buildDaySignalMessage(coin: DayAnalysis): string {
   const url = coinUrl(coin.symbol);
   const lines = [
     `${long ? "🟢" : "🔴"} <b>${long ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(coin.symbol))}</b> — Day trade`,
+    `📌 <b>Day 15M · Supertrend</b>`,
     `<i>Supertrend(${DAY_CONFIG.stLen}, ${DAY_CONFIG.stMult}) · ${coin.timeframe.toUpperCase()} · ${coin.htfTimeframe.toUpperCase()} trend ${coin.htfBias ?? "—"}</i>`,
     "",
     `Kirish:  <code>${formatSignalPrice(coin.entry)}</code>`,
@@ -144,10 +146,10 @@ export async function buildDaySignalChart(coin: DayAnalysis, candlesOverride?: C
   });
 }
 
-/** Swing signal grafigi: oxirgi ~90 ta 1H sham, EMA 20/50, kirish/stop/TP1/TP2. */
+/** Swing signal grafigi: oxirgi ~90 ta sham (1H yoki 4H), EMA 20/50, kirish/stop/TP1/TP2. */
 const SWING_CHART_BARS = 90;
 export async function buildSwingSignalChart(coin: FqScanCoin): Promise<Buffer> {
-  const raw = await getKlines(coin.symbol, FQ_INTERVAL, 300, coin.marketType);
+  const raw = await getKlines(coin.symbol, coin.timeframe, 300, coin.marketType);
   const candles = raw.filter((c) => c.closeTime <= Date.now());
   const closes = candles.map((c) => c.close);
   const from = Math.max(0, candles.length - SWING_CHART_BARS);
@@ -155,7 +157,7 @@ export async function buildSwingSignalChart(coin: FqScanCoin): Promise<Buffer> {
   const setup = coin.setup === "breakout" ? "Breakout" : "Pullback";
   return renderSignalChart({
     title: `${long ? "LONG" : "SHORT"} · ${pairLabel(coin.symbol)} — savdoga kirildi`,
-    subtitle: `Swing · FQ v3 ${setup} · ${coin.timeframe.toUpperCase()} · ${coin.htfTimeframe.toUpperCase()} trend ${coin.htfBias ?? "—"}`,
+    subtitle: `${FQ_PROFILES[coin.strategyId].label} · ${setup} · ${coin.htfTimeframe.toUpperCase()} trend ${coin.htfBias ?? "—"}`,
     side: long ? "long" : "short",
     candles: candles.slice(from),
     lines: [
@@ -202,7 +204,8 @@ const STATUS_MESSAGES: Partial<Record<SignalStatus, (r: number) => string>> = {
 function buildStatusMessage(doc: FqSignalDoc, status: SignalStatus, resultR: number | null): string | null {
   const builder = STATUS_MESSAGES[status];
   if (!builder) return null;
-  const head = `${doc.side === "long" ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(doc.symbol))}`;
+  const label = doc.strategy === "st_day" ? "Day 15M" : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId].label;
+  const head = `${doc.side === "long" ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(doc.symbol))} · ${escapeHtml(label)}`;
   return `${builder(resultR ?? 0)}\n<i>${head}</i>`;
 }
 
@@ -265,10 +268,11 @@ async function updateOpenSignals(errors: string[]): Promise<number> {
         continue;
       }
 
-      const start = doc.signalTime.getTime() + HOUR_MS;
-      const end = Math.min(Date.now(), start + SIGNAL_MAX_BARS * HOUR_MS);
+      const profile = FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId];
+      const start = doc.signalTime.getTime() + profile.intervalMs;
+      const end = Math.min(Date.now(), start + SIGNAL_MAX_BARS * profile.intervalMs);
       const candles = (
-        await getKlinesRange(doc.symbol, FQ_INTERVAL, start, end, doc.marketType as "spot" | "futures")
+        await getKlinesRange(doc.symbol, profile.interval, start, end, doc.marketType as "spot" | "futures")
       ).filter((c) => c.closeTime <= Date.now());
 
       const outcome = evaluateSignalOutcome(
@@ -309,25 +313,35 @@ async function updateOpenSignals(errors: string[]): Promise<number> {
   return updated;
 }
 
-export async function runSignalCycle(): Promise<SignalRunResult> {
-  const errors: string[] = [];
-  await syncIndexesOnce();
-  const scan = await runFqScan(env.TELEGRAM_SIGNAL_MARKET, { fresh: true });
+/** Yoqilgan swing profillari (har biri alohida strategiya, alohida limit). */
+function enabledFqProfiles(): FqProfile[] {
+  const list: FqProfile[] = [];
+  if (env.FQ_1H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_v3);
+  if (env.FQ_4H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_4h);
+  return list;
+}
+
+/** Bitta FQ profili: skaner → yangi signallar → Telegram. */
+async function runFqSignals(
+  profile: FqProfile,
+  errors: string[],
+): Promise<{ scanned: number; newSignals: number; sent: number }> {
+  const scan = await runFqScan(env.TELEGRAM_SIGNAL_MARKET, { fresh: true, strategy: profile.id });
 
   const fresh = scan.coins.filter(
     (c) => c.verdict === "enter" && c.signalBarsAgo === 0 && c.signalTime !== null && c.side !== null,
   );
 
-  // Pine: pyramiding = 0 — shu coinda ochiq signal bo'lsa yangisi olinmaydi.
+  // Pine: pyramiding = 0 — shu strategiyada shu coinda ochiq signal bo'lsa yangisi olinmaydi.
   const openSymbols = new Set(
-    (await FqSignal.find({ ...strategyFilter("fq_v3"), status: { $in: ["open", "tp1"] } }, { symbol: 1 })).map(
+    (await FqSignal.find({ ...strategyFilter(profile.id), status: { $in: ["open", "tp1"] } }, { symbol: 1 })).map(
       (d) => d.symbol,
     ),
   );
 
   let newSignals = 0;
   let sent = 0;
-  let dailyLeft = env.TELEGRAM_MAX_SIGNALS_PER_DAY - (await sentTodayCount("fq_v3"));
+  let dailyLeft = env.TELEGRAM_MAX_SIGNALS_PER_DAY - (await sentTodayCount(profile.id));
 
   for (const coin of fresh) {
     if (openSymbols.has(coin.symbol)) continue;
@@ -335,7 +349,7 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
     let doc: FqSignalDoc;
     try {
       doc = await FqSignal.create({
-        strategy: "fq_v3",
+        strategy: profile.id,
         symbol: coin.symbol,
         marketType: coin.marketType,
         side: coin.side as "long" | "short",
@@ -349,7 +363,7 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
       });
     } catch (error) {
       if (isDuplicateKey(error)) continue; // allaqachon yuborilgan
-      errors.push(`${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${profile.id} ${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
     newSignals += 1;
@@ -362,19 +376,37 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
       sent += 1;
       dailyLeft -= 1;
     } catch (error) {
-      errors.push(`Telegram ${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`Telegram ${profile.id} ${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  let scanned = scan.scanned;
-  if (env.DAY_SIGNALS_ENABLED) {
+  return { scanned: scan.scanned, newSignals, sent };
+}
+
+/**
+ * Har bir yoqilgan strategiya alohida tekshiriladi — qaysi biriga mos signal chiqsa,
+ * o'sha strategiya nomi bilan botga yuboriladi. Bitta strategiyadagi xato boshqalarini to'xtatmaydi.
+ */
+export async function runSignalCycle(): Promise<SignalRunResult> {
+  const errors: string[] = [];
+  await syncIndexesOnce();
+
+  const runs: { id: string; run: () => Promise<{ scanned: number; newSignals: number; sent: number }> }[] = [
+    ...enabledFqProfiles().map((profile) => ({ id: profile.label, run: () => runFqSignals(profile, errors) })),
+    ...(env.DAY_SIGNALS_ENABLED ? [{ id: "Day trade", run: () => runDaySignals(errors) }] : []),
+  ];
+
+  let scanned = 0;
+  let newSignals = 0;
+  let sent = 0;
+  for (const { id, run } of runs) {
     try {
-      const day = await runDaySignals(errors);
-      scanned += day.scanned;
-      newSignals += day.newSignals;
-      sent += day.sent;
+      const result = await run();
+      scanned += result.scanned;
+      newSignals += result.newSignals;
+      sent += result.sent;
     } catch (error) {
-      errors.push(`Day trade: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`${id}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -501,7 +533,8 @@ export async function sendTestTelegramMessage(): Promise<void> {
     [
       "🔔 <b>FQ Signals — test xabari</b>",
       "Bot ulangan. Signal chiqqanda shu yerga xabar keladi:",
-      "• FQ v3 (swing, 1H) — kirish, stop, TP1/TP2",
+      "• Swing 1H (FQ v3) — kirish, stop, TP1/TP2",
+      "• Swing 4H (FQ v3 + Fib) — kirish, stop, TP1/TP2",
       "• Day trade (Supertrend 15M) — kirish, stop, chiqish flipda",
       "Natijalar (TP/SL/chiqish) asl xabarga reply sifatida keladi.",
     ].join("\n"),

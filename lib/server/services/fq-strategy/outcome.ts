@@ -37,6 +37,9 @@ export function evaluateSignalOutcome(
   const risk = Math.abs(levels.entry - levels.stopLoss);
   if (risk <= 0) return { status: "open", resultR: null, closedAt: null, tp1At: null };
 
+  // R karralari darajalardan olinadi (Fib extension TP2 o'zgaruvchan bo'lishi mumkin).
+  const tp1R = Math.abs(levels.tp1 - levels.entry) / risk || config.tp1R;
+  const tp2R = Math.abs(levels.tp2 - levels.entry) / risk || config.tp2R;
   const beStop = levels.entry + d * risk * BE_OFFSET_R;
   const hitDown = (c: Candle, price: number) => (d === 1 ? c.low <= price : c.high >= price);
   const hitUp = (c: Candle, price: number) => (d === 1 ? c.high >= price : c.low <= price);
@@ -54,7 +57,7 @@ export function evaluateSignalOutcome(
         if (hitUp(candle, levels.tp2)) {
           return {
             status: "tp2",
-            resultR: PARTIAL * config.tp1R + (1 - PARTIAL) * config.tp2R,
+            resultR: PARTIAL * tp1R + (1 - PARTIAL) * tp2R,
             closedAt: candle.closeTime,
             tp1At,
           };
@@ -66,7 +69,7 @@ export function evaluateSignalOutcome(
     if (hitDown(candle, beStop)) {
       return {
         status: "be",
-        resultR: PARTIAL * config.tp1R + (1 - PARTIAL) * BE_OFFSET_R,
+        resultR: PARTIAL * tp1R + (1 - PARTIAL) * BE_OFFSET_R,
         closedAt: candle.closeTime,
         tp1At,
       };
@@ -74,7 +77,7 @@ export function evaluateSignalOutcome(
     if (hitUp(candle, levels.tp2)) {
       return {
         status: "tp2",
-        resultR: PARTIAL * config.tp1R + (1 - PARTIAL) * config.tp2R,
+        resultR: PARTIAL * tp1R + (1 - PARTIAL) * tp2R,
         closedAt: candle.closeTime,
         tp1At,
       };
@@ -85,7 +88,7 @@ export function evaluateSignalOutcome(
     const last = bars.at(-1)!;
     const openR = (d * (last.close - levels.entry)) / risk;
     const resultR =
-      tp1At !== null ? PARTIAL * config.tp1R + (1 - PARTIAL) * openR : openR;
+      tp1At !== null ? PARTIAL * tp1R + (1 - PARTIAL) * openR : openR;
     return { status: "expired", resultR, closedAt: last.closeTime, tp1At };
   }
 

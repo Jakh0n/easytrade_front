@@ -5,7 +5,7 @@ import {
   computeHtfBias,
   evaluateFqBar,
 } from "../services/fq-strategy/engine";
-import { buildFqFromCandles } from "../services/fq.strategy.service";
+import { FQ_PROFILES, buildFqFromCandles } from "../services/fq.strategy.service";
 import { makeCandles, type CandleShape } from "./helpers/candles";
 
 function trendShapes(count: number, start: number, step: number): CandleShape[] {
@@ -77,5 +77,16 @@ describe("FQ Strategy v3 engine", () => {
     expect(fut.side).toBe("short");
     expect(fut.checklist).toHaveLength(7);
     expect(fut.symbol).toBe("ETHUSDT");
+  });
+
+  it("Swing 4H profile labels the response and adds a Fib checklist item", () => {
+    const down = makeCandles(trendShapes(300, 500, -1));
+    const profile = FQ_PROFILES.fq_4h;
+    const res = buildFqFromCandles("btcusdt", "futures", down, down, profile.config, profile);
+    expect(res.strategyId).toBe("fq_4h");
+    expect(res.timeframe).toBe("4h");
+    expect(res.htfTimeframe).toBe("1d");
+    expect(res.checklist.some((c) => c.label.startsWith("Fib"))).toBe(true);
+    expect(Array.isArray(res.confluences)).toBe(true);
   });
 });

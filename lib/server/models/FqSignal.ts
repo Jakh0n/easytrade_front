@@ -1,11 +1,11 @@
 import mongoose, { Schema, model, type InferSchemaType } from "mongoose";
 
 export const SIGNAL_STATUSES = ["open", "tp1", "tp2", "be", "sl", "exit", "expired"] as const;
-export const STRATEGY_IDS = ["fq_v3", "st_day"] as const;
+export const STRATEGY_IDS = ["fq_v3", "fq_4h", "st_day"] as const;
 
 const fqSignalSchema = new Schema(
   {
-    /** fq_v3 = swing (1H), st_day = day trade (Supertrend 15M). */
+    /** fq_v3 = swing (1H), fq_4h = swing 4H + Fib, st_day = day trade (Supertrend 15M). */
     strategy: { type: String, enum: STRATEGY_IDS, default: "fq_v3", index: true },
     symbol: { type: String, required: true, uppercase: true, trim: true },
     marketType: { type: String, required: true, enum: ["spot", "futures"] },

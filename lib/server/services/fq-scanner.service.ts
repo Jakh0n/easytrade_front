@@ -1,5 +1,5 @@
 import { getAll24hrTickers, getCryptoFuturesSymbols } from "./binance.service";
-import { buildFqAnalysis } from "./fq.strategy.service";
+import { FQ_PROFILES, buildFqAnalysis, type FqStrategyId } from "./fq.strategy.service";
 import type {
   FqScanCoin,
   FqScanResponse,
@@ -25,7 +25,7 @@ const CACHE_TTL_MS = 3 * 60 * 1000;
 
 const VERDICT_ORDER = { enter: 0, wait: 1, avoid: 2 } as const;
 
-const cache = new Map<MarketType, { data: FqScanResponse; expiresAt: number }>();
+const cache = new Map<string, { data: FqScanResponse; expiresAt: number }>();
 
 function isScannableSymbol(symbol: string): boolean {
   if (!symbol.endsWith("USDT") || EXCLUDED_SYMBOLS.has(symbol)) return false;
@@ -71,9 +71,12 @@ export function sortScanCoins(coins: FqScanCoin[]): FqScanCoin[] {
  */
 export async function runFqScan(
   marketType: MarketType = "futures",
-  options: { fresh?: boolean } = {},
+  options: { fresh?: boolean; strategy?: FqStrategyId } = {},
 ): Promise<FqScanResponse> {
-  const cached = cache.get(marketType);
+  const strategy = options.strategy ?? "fq_v3";
+  const profile = FQ_PROFILES[strategy];
+  const cacheKey = `${strategy}:${marketType}`;
+  const cached = cache.get(cacheKey);
   if (!options.fresh && cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
@@ -88,14 +91,15 @@ export async function runFqScan(
       (t) =>
         isScannableSymbol(t.symbol) &&
         t.quoteVolume >= MIN_QUOTE_VOLUME &&
-        (!crypto || crypto.has(t.symbol)),
+        (!crypto || crypto.has(t.symbol)) &&
+        (!profile.symbols || profile.symbols.includes(t.symbol)),
     )
     .sort((a, b) => b.quoteVolume - a.quoteVolume)
     .slice(0, MAX_SCAN);
 
   const coins = await runPool(universe, CONCURRENCY, async (ticker) => {
     try {
-      const analysis = await buildFqAnalysis(ticker.symbol, marketType);
+      const analysis = await buildFqAnalysis(ticker.symbol, marketType, strategy);
       const coin: FqScanCoin = {
         ...analysis,
         priceChangePercent: ticker.priceChangePercent,
@@ -123,6 +127,6 @@ export async function runFqScan(
     stats,
   };
 
-  cache.set(marketType, { data: response, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(cacheKey, { data: response, expiresAt: Date.now() + CACHE_TTL_MS });
   return response;
 }

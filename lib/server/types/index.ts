@@ -93,7 +93,8 @@ export interface StrategyChecklistItem {
 }
 
 export interface FqAnalysisResponse {
-  strategyId: "fq_v3";
+  /** fq_v3 = Swing 1H, fq_4h = Swing 4H + Fib (bitta dvigatel, turli profil). */
+  strategyId: "fq_v3" | "fq_4h";
   symbol: string;
   marketType: MarketType;
   currentPrice: number;
@@ -129,6 +130,8 @@ export interface FqAnalysisResponse {
   takeProfit: number;
   riskReward: number;
   riskPercent: number;
+  /** Signal shamidagi konfluenslar: "Fib 0.62", "OB+FVG", "Sweep", "BOS". */
+  confluences: string[];
   checklist: StrategyChecklistItem[];
   generatedAt: string;
 }
@@ -193,7 +196,7 @@ export interface DayScanResponse {
 
 // ───────────── Signal tarixi ─────────────
 
-export type StrategyId = "fq_v3" | "st_day";
+export type StrategyId = "fq_v3" | "fq_4h" | "st_day";
 
 export type SignalStatus = "open" | "tp1" | "tp2" | "be" | "sl" | "exit" | "expired";
 
