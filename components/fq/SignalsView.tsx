@@ -26,6 +26,7 @@ const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: "all", label: "Hammasi" },
   { value: "fq_v3", label: STRATEGY_LABEL.fq_v3 },
   { value: "fq_4h", label: STRATEGY_LABEL.fq_4h },
+  { value: "smc_4h", label: STRATEGY_LABEL.smc_4h },
   { value: "st_day", label: STRATEGY_LABEL.st_day },
 ];
 
@@ -259,6 +260,8 @@ export function SignalsView() {
                         <span className="ml-1.5 text-xs text-muted-foreground">
                           {s.strategy === "st_day"
                             ? "Day"
+                            : s.strategy === "smc_4h"
+                              ? "OTE"
                             : `${s.strategy === "fq_4h" ? "4H " : ""}${s.setup === "breakout" ? "BO" : "PB"}`}
                         </span>
                       </td>

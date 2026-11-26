@@ -10,6 +10,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { SMC_CONFIG, backtestSmc, type SmcConfig } from "../backtest/smc-backtest";
 import { backtestDay, backtestFq, summarize, type BacktestStats, type BacktestTrade } from "../backtest/fq-backtest";
 import { FQ_SWING_CONFIG, type FqConfig } from "../services/fq-strategy/engine";
 import {
@@ -44,6 +45,23 @@ export const VARIANTS: Record<string, Partial<FqConfig>> = {
   noBreakout: { useBreakout: false },
   sweepBos: { useSweepTrigger: true, useStructure: true },
   obStop: { useOrderBlock: true, stopMode: "structure" },
+};
+
+export const SMC_VARIANTS: Record<string, Partial<SmcConfig>> = {
+  "ote618": {},
+  "ote50": { entryFib: 0.5 },
+  "ote705": { entryFib: 0.705 },
+  "ote786": { entryFib: 0.786 },
+  "obEntry": { entry: "ob" },
+  "noHtf": { useHtf: false },
+  "tp2ext618": { tp2Ext: 0.618 },
+  "tp1R1": { tp1R: 1 },
+  "leg2atr": { minLegAtr: 2 },
+  "wait10": { maxWait: 10 },
+  "noHtf50": { useHtf: false, entryFib: 0.5 },
+  "noHtf618w10": { useHtf: false, maxWait: 10 },
+  "noHtf50w10": { useHtf: false, entryFib: 0.5, maxWait: 10 },
+  "noHtfOb": { useHtf: false, entry: "ob" },
 };
 
 function arg(name: string): string | undefined {
@@ -114,7 +132,10 @@ async function main(): Promise<void> {
   const start = end - days * 86_400_000;
   // HTF EMA200 uchun qo'shimcha tarix.
   const htfStart = start - 220 * INTERVAL_MS[htfTf]!;
-  const variantNames = strategy === "day" ? ["day"] : (arg("variants") ?? Object.keys(VARIANTS).join(",")).split(",");
+  const variantNames =
+    strategy === "day"
+      ? ["day"]
+      : (arg("variants") ?? Object.keys(strategy === "smc" ? SMC_VARIANTS : VARIANTS).join(",")).split(",");
   const symbols = arg("symbols")?.split(",") ?? (await universe(Number(arg("universe") ?? 30)));
 
   console.log(
@@ -142,15 +163,17 @@ async function main(): Promise<void> {
   console.log("─".repeat(12 + 2 * (header.length + 9)));
 
   for (const name of variantNames) {
-    const overrides = name === "day" ? {} : VARIANTS[name];
+    const overrides = name === "day" ? {} : strategy === "smc" ? SMC_VARIANTS[name] : VARIANTS[name];
     if (!overrides) {
       console.log(`${name}: noma'lum variant`);
       continue;
     }
-    const config: FqConfig = { ...FQ_SWING_CONFIG, ...overrides };
+    const config: FqConfig = { ...FQ_SWING_CONFIG, ...(strategy === "fq" ? (overrides as Partial<FqConfig>) : {}) };
     const trades: BacktestTrade[] = data.flatMap((d) =>
       strategy === "day"
         ? backtestDay(d.symbol, d.candles, d.htf)
+        : strategy === "smc"
+          ? backtestSmc(d.symbol, d.candles, d.htf, { ...SMC_CONFIG, ...(overrides as Partial<SmcConfig>) })
         : backtestFq(d.symbol, d.candles, d.htf, { config, entryMode, limitFrac, limitBars }),
     );
     const train = trades.filter((t) => t.signalTime < split);

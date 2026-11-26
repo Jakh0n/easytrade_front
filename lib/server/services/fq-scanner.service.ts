@@ -27,7 +27,7 @@ const VERDICT_ORDER = { enter: 0, wait: 1, avoid: 2 } as const;
 
 const cache = new Map<string, { data: FqScanResponse; expiresAt: number }>();
 
-function isScannableSymbol(symbol: string): boolean {
+export function isScannableSymbol(symbol: string): boolean {
   if (!symbol.endsWith("USDT") || EXCLUDED_SYMBOLS.has(symbol)) return false;
   return !/(UP|DOWN|BEAR|BULL)USDT$/.test(symbol);
 }
