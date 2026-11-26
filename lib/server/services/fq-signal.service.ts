@@ -9,6 +9,7 @@ import { DAY_BAR_MS, DAY_CONFIG, computeSupertrend, evaluateDayOutcome } from ".
 import { FQ_PROFILES, type FqProfile, type FqStrategyId } from "./fq.strategy.service";
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "./fq-strategy/outcome";
 import { runMomentumRebalance } from "./momentum.service";
+import { getRegimeGate } from "./market-regime.service";
 import { SMC_INTERVAL, SMC_INTERVAL_MS, runSmcSignals, updatePendingSmc } from "./smc.service";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type {
@@ -68,7 +69,7 @@ function coinUrl(symbol: string): string | null {
   return env.APP_URL ? `${env.APP_URL.replace(/\/$/, "")}/coin/${symbol}` : null;
 }
 
-export function buildSignalMessage(coin: FqScanCoin): string {
+export function buildSignalMessage(coin: FqScanCoin, regime: string | null = null): string {
   const long = coin.side === "long";
   const stopPct = Math.abs((coin.stopLoss - coin.entry) / coin.entry) * 100;
   const notionalPct = (coin.riskPercent / stopPct) * 100;
@@ -90,11 +91,12 @@ export function buildSignalMessage(coin: FqScanCoin): string {
     `Hajm: ${coin.riskPercent}% risk → pozitsiya ≈ kapitalning <b>${notionalPct.toFixed(0)}%</b>${notionalPct > 100 ? ` (≈${Math.ceil(notionalPct / 100)}x leverage)` : ""}`,
     `ADX ${coin.indicators.adx.toFixed(1)} · RSI ${coin.indicators.rsi.toFixed(0)} · 24s ${coin.priceChangePercent >= 0 ? "+" : ""}${coin.priceChangePercent.toFixed(2)}%`,
   ];
+  if (regime) lines.push(`🌐 Bozor: ${escapeHtml(regime)}`);
   if (url) lines.push("", `<a href="${url}">Grafik va tafsilotlar →</a>`);
   return lines.join("\n");
 }
 
-export function buildDaySignalMessage(coin: DayAnalysis): string {
+export function buildDaySignalMessage(coin: DayAnalysis, regime: string | null = null): string {
   const long = coin.side === "long";
   const stopPct = Math.abs((coin.stopLoss - coin.entry) / coin.entry) * 100;
   const notionalPct = (coin.riskPercent / stopPct) * 100;
@@ -111,6 +113,7 @@ export function buildDaySignalMessage(coin: DayAnalysis): string {
     `Hajm: ${coin.riskPercent}% risk → pozitsiya ≈ kapitalning <b>${notionalPct.toFixed(0)}%</b>${notionalPct > 100 ? ` (≈${Math.ceil(notionalPct / 100)}x leverage)` : ""}`,
     `24s ${coin.priceChangePercent >= 0 ? "+" : ""}${coin.priceChangePercent.toFixed(2)}% · win rate past (~30%), foyda katta savdolardan`,
   ];
+  if (regime) lines.push(`🌐 Bozor: ${escapeHtml(regime)}`);
   if (url) lines.push("", `<a href="${url}">Grafik →</a>`);
   return lines.join("\n");
 }
@@ -190,8 +193,8 @@ async function sendWithChart(symbol: string, text: string, chart: () => Promise<
 }
 
 /** Day signalni rasm bilan yuboradi. */
-async function sendDaySignal(coin: DayAnalysis): Promise<number> {
-  return sendWithChart(coin.symbol, buildDaySignalMessage(coin), () => buildDaySignalChart(coin));
+async function sendDaySignal(coin: DayAnalysis, regime: string | null): Promise<number> {
+  return sendWithChart(coin.symbol, buildDaySignalMessage(coin, regime), () => buildDaySignalChart(coin));
 }
 
 const STATUS_MESSAGES: Partial<Record<SignalStatus, (r: number) => string>> = {
@@ -340,8 +343,15 @@ async function runFqSignals(
 ): Promise<{ scanned: number; newSignals: number; sent: number }> {
   const scan = await runFqScan(env.TELEGRAM_SIGNAL_MARKET, { fresh: true, strategy: profile.id });
 
+  // Bozor rejimi (BTC / TOTAL3 / BTC.D) strategiyaga mos bo'lmagan tomondagi signallar olinmaydi.
+  const regime = await getRegimeGate(profile.id, env.TELEGRAM_SIGNAL_MARKET, errors);
   const fresh = scan.coins.filter(
-    (c) => c.verdict === "enter" && c.signalBarsAgo === 0 && c.signalTime !== null && c.side !== null,
+    (c) =>
+      c.verdict === "enter" &&
+      c.signalBarsAgo === 0 &&
+      c.signalTime !== null &&
+      c.side !== null &&
+      regime.allows(c.side, c.symbol),
   );
 
   // Pine: pyramiding = 0 — shu strategiyada shu coinda ochiq signal bo'lsa yangisi olinmaydi.
@@ -383,7 +393,7 @@ async function runFqSignals(
 
     if (!telegramActive() || sent >= env.TELEGRAM_MAX_SIGNALS_PER_RUN || dailyLeft <= 0) continue;
     try {
-      const messageId = await sendWithChart(coin.symbol, buildSignalMessage(coin), () => buildSwingSignalChart(coin));
+      const messageId = await sendWithChart(coin.symbol, buildSignalMessage(coin, regime.summary), () => buildSwingSignalChart(coin));
       await FqSignal.updateOne({ _id: doc._id }, { telegramMessageId: messageId });
       sent += 1;
       dailyLeft -= 1;
@@ -455,8 +465,14 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
 /** Day trade: yopilgan oxirgi 15M shamda Supertrend 1H trend tomonga o'girilgan coinlar. */
 async function runDaySignals(errors: string[]): Promise<{ scanned: number; newSignals: number; sent: number }> {
   const scan = await runDayScan(env.TELEGRAM_SIGNAL_MARKET, { fresh: true });
+  const regime = await getRegimeGate("st_day", env.TELEGRAM_SIGNAL_MARKET, errors);
   const fresh = scan.coins.filter(
-    (c) => c.verdict === "enter" && c.flipBarsAgo === 0 && c.signalTime !== null && c.side !== null,
+    (c) =>
+      c.verdict === "enter" &&
+      c.flipBarsAgo === 0 &&
+      c.signalTime !== null &&
+      c.side !== null &&
+      regime.allows(c.side, c.symbol),
   );
   const openSymbols = new Set(
     (await FqSignal.find({ strategy: "st_day", status: "open" }, { symbol: 1 })).map((d) => d.symbol),
@@ -493,7 +509,7 @@ async function runDaySignals(errors: string[]): Promise<{ scanned: number; newSi
 
     if (!telegramActive() || sent >= env.TELEGRAM_MAX_SIGNALS_PER_RUN || dailyLeft <= 0) continue;
     try {
-      const messageId = await sendDaySignal(coin);
+      const messageId = await sendDaySignal(coin, regime.summary);
       await FqSignal.updateOne({ _id: doc._id }, { telegramMessageId: messageId });
       sent += 1;
       dailyLeft -= 1;
@@ -569,6 +585,7 @@ export async function sendTestTelegramMessage(): Promise<void> {
       "• SMC 4H — BOS + Fib 0.618 limit order (to'ldi / bekor xabari bilan)",
       "• Day trade (Supertrend 15M) — kirish, stop, chiqish flipda",
       "• Momentum portfeli — har dushanba long/short savat (market-neutral)",
+      "Barcha signallar bozor rejimi (BTC / TOTAL3 / BTC.D) bilan filtrlanadi.",
       "Natijalar (TP/SL/chiqish) asl xabarga reply sifatida keladi.",
     ].join("\n"),
   );

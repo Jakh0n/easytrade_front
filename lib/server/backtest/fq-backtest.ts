@@ -37,6 +37,8 @@ export interface BacktestOptions {
   htfEmaLen?: number;
   /** Indikatorlar isishi uchun o'tkazib yuboriladigan shamlar. */
   warmupBars?: number;
+  /** Signal shami yopilgan paytda savdoga ruxsat (masalan bozor rejimi filtri). false — signal o'tkaziladi. */
+  filter?: (side: "long" | "short", closeTime: number) => boolean;
 }
 
 export interface BacktestTrade {
@@ -92,6 +94,7 @@ export function backtestFq(symbol: string, candles: Candle[], htf: Candle[], opt
     if (!state) continue;
     const side = state.longSig ? "long" : state.shortSig && marketType === "futures" ? "short" : null;
     if (!side) continue;
+    if (options.filter && !options.filter(side, bar.closeTime)) continue;
 
     let levels = computeFqLevels(state, side, config);
     if (!levels.riskOk) continue;
@@ -218,7 +221,7 @@ export function backtestDay(
   symbol: string,
   candles: Candle[],
   htf: Candle[],
-  options: Pick<BacktestOptions, "costPerSide" | "marketType" | "warmupBars"> = {},
+  options: Pick<BacktestOptions, "costPerSide" | "marketType" | "warmupBars" | "filter"> = {},
 ): BacktestTrade[] {
   const costPerSide = options.costPerSide ?? 0.0007;
   const marketType = options.marketType ?? "futures";
@@ -245,6 +248,7 @@ export function backtestDay(
     const risk = Math.abs(entry - stopLoss);
     if (!(risk > 0)) continue;
     const side = bias === 1 ? "long" : "short";
+    if (options.filter && !options.filter(side, bar.closeTime)) continue;
     const outcome = evaluateDayOutcome(
       { side, entry, stopLoss, signalTime: bar.openTime },
       candles.slice(Math.max(0, t - warmup), t + DAY_CONFIG.maxBars + 1),

@@ -39,6 +39,8 @@ const envSchema = z.object({
   SMC_4H_SIGNALS_ENABLED: boolFromEnv(true),
   /** Haftalik momentum savati (market-neutral, dushanba UTC). */
   MOMENTUM_SIGNALS_ENABLED: boolFromEnv(true),
+  /** Bozor rejimi filtri (BTC / TOTAL3 / BTC.D proxy) — strategiyaga mos bo'lmagan tomondagi signallar yuborilmaydi. */
+  MARKET_REGIME_FILTER_ENABLED: boolFromEnv(true),
   /** /api/signals/run ni himoyalaydi: `Authorization: Bearer <CRON_SECRET>`. */
   CRON_SECRET: z.string().min(16).optional(),
   /** true bo'lsa yangi foydalanuvchilar ro'yxatdan o'ta oladi (default: faqat birinchisi). */

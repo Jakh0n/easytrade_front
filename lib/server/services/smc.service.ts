@@ -3,6 +3,7 @@ import { FqSignal, type FqSignalDoc } from "../models/FqSignal";
 import { getKlines, getKlinesRange } from "./binance.service";
 import { CHART_COLORS, renderSignalChart } from "./chart-image.service";
 import { runPool } from "./fq-scanner.service";
+import { getRegimeGate } from "./market-regime.service";
 import { SMC_CONFIG, computeSmcSeries, htfDirection, resolvePending, smcSetupAt, type SmcSetup } from "./smc/engine";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type { Candle, MarketType } from "../types/index";
@@ -41,7 +42,7 @@ function telegramActive(): boolean {
   return env.TELEGRAM_SIGNALS_ENABLED && isTelegramConfigured();
 }
 
-export function buildSmcMessage(symbol: string, setup: SmcSetup): string {
+export function buildSmcMessage(symbol: string, setup: SmcSetup, regime: string | null = null): string {
   const long = setup.side === "long";
   const risk = Math.abs(setup.entry - setup.stopLoss);
   const r = (p: number) => (Math.abs(p - setup.entry) / risk).toFixed(1);
@@ -61,12 +62,13 @@ export function buildSmcMessage(symbol: string, setup: SmcSetup): string {
     `⏳ Order amal qiladi: ${days} kun yoki narx ${fmt(setup.invalidate)} dan o'tguncha (to'lmasa bekor)`,
     `Hajm: ${RISK_PCT}% risk → pozitsiya ≈ kapitalning <b>${notional.toFixed(0)}%</b>`,
   ];
+  if (regime) lines.push(`🌐 Bozor: ${regime}`);
   if (url) lines.push("", `<a href="${url}">Grafik →</a>`);
   return lines.join("\n");
 }
 
-async function sendSetup(symbol: string, setup: SmcSetup, candles: Candle[]): Promise<number> {
-  const text = buildSmcMessage(symbol, setup);
+async function sendSetup(symbol: string, setup: SmcSetup, candles: Candle[], regime: string | null): Promise<number> {
+  const text = buildSmcMessage(symbol, setup, regime);
   try {
     const long = setup.side === "long";
     const from = Math.max(0, candles.length - 90);
@@ -127,9 +129,13 @@ export async function runSmcSignals(
     }
   });
 
+  // Bozor rejimi (TOTAL3 1D) — mos bo'lmagan tomondagi setup'lar olinmaydi.
+  const regime = await getRegimeGate(STRATEGY, market, errors);
+
   let newSignals = 0;
   let sent = 0;
   for (const { symbol, setup, candles } of found) {
+    if (!regime.allows(setup.side, symbol)) continue;
     let doc: FqSignalDoc;
     try {
       doc = await FqSignal.create({
@@ -166,7 +172,7 @@ export async function runSmcSignals(
 
     if (!telegramActive()) continue;
     try {
-      const messageId = await sendSetup(symbol, setup, candles);
+      const messageId = await sendSetup(symbol, setup, candles, regime.summary);
       await FqSignal.updateOne({ _id: doc._id }, { telegramMessageId: messageId });
       sent += 1;
     } catch (error) {
