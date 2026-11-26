@@ -24,6 +24,7 @@ type Filter = "all" | StrategyId;
 
 const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: "all", label: "Hammasi" },
+  { value: "fq_15m", label: STRATEGY_LABEL.fq_15m },
   { value: "fq_v3", label: STRATEGY_LABEL.fq_v3 },
   { value: "fq_4h", label: STRATEGY_LABEL.fq_4h },
   { value: "smc_4h", label: STRATEGY_LABEL.smc_4h },
@@ -262,7 +263,7 @@ export function SignalsView() {
                             ? "Day"
                             : s.strategy === "smc_4h"
                               ? "OTE"
-                            : `${s.strategy === "fq_4h" ? "4H " : ""}${s.setup === "breakout" ? "BO" : "PB"}`}
+                            : `${s.strategy === "fq_4h" ? "4H " : s.strategy === "fq_15m" ? "15M " : ""}${s.setup === "breakout" ? "BO" : "PB"}`}
                         </span>
                       </td>
                       <td className="px-3 py-2.5">

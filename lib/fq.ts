@@ -40,6 +40,7 @@ export const STATUS_META: Record<
 };
 
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
+  fq_15m: "FQ 15M",
   fq_v3: "Swing 1H",
   fq_4h: "Swing 4H",
   smc_4h: "SMC 4H",

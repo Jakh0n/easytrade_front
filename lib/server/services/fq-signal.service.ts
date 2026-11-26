@@ -148,7 +148,7 @@ export async function buildDaySignalChart(coin: DayAnalysis, candlesOverride?: C
   });
 }
 
-/** Swing signal grafigi: oxirgi ~90 ta sham (1H yoki 4H), EMA 20/50, kirish/stop/TP1/TP2. */
+/** Swing signal grafigi: oxirgi ~90 ta sham (15M, 1H yoki 4H), EMA 20/50, kirish/stop/TP1/TP2. */
 const SWING_CHART_BARS = 90;
 export async function buildSwingSignalChart(coin: FqScanCoin): Promise<Buffer> {
   const raw = await getKlines(coin.symbol, coin.timeframe, 300, coin.marketType);
@@ -327,6 +327,7 @@ async function updateOpenSignals(errors: string[]): Promise<number> {
 /** Yoqilgan swing profillari (har biri alohida strategiya, alohida limit). */
 function enabledFqProfiles(): FqProfile[] {
   const list: FqProfile[] = [];
+  if (env.FQ_15M_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_15m);
   if (env.FQ_1H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_v3);
   if (env.FQ_4H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_4h);
   return list;
@@ -562,6 +563,7 @@ export async function sendTestTelegramMessage(): Promise<void> {
     [
       "🔔 <b>FQ Signals — test xabari</b>",
       "Bot ulangan. Signal chiqqanda shu yerga xabar keladi:",
+      "• Day 15M (FQ v3, day rejim) — kirish, stop, TP1/TP2",
       "• Swing 1H (FQ v3) — kirish, stop, TP1/TP2",
       "• Swing 4H (FQ v3 + Fib) — kirish, stop, TP1/TP2",
       "• SMC 4H — BOS + Fib 0.618 limit order (to'ldi / bekor xabari bilan)",
