@@ -8,6 +8,8 @@ import { runDayScan } from "./day.strategy.service";
 import { DAY_BAR_MS, DAY_CONFIG, computeSupertrend, evaluateDayOutcome } from "./day-strategy/engine";
 import { FQ_PROFILES, type FqProfile, type FqStrategyId } from "./fq.strategy.service";
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "./fq-strategy/outcome";
+import { runMomentumRebalance } from "./momentum.service";
+import { SMC_INTERVAL, SMC_INTERVAL_MS, runSmcSignals, updatePendingSmc } from "./smc.service";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type {
   Candle,
@@ -204,7 +206,12 @@ const STATUS_MESSAGES: Partial<Record<SignalStatus, (r: number) => string>> = {
 function buildStatusMessage(doc: FqSignalDoc, status: SignalStatus, resultR: number | null): string | null {
   const builder = STATUS_MESSAGES[status];
   if (!builder) return null;
-  const label = doc.strategy === "st_day" ? "Day 15M" : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId].label;
+  const label =
+    doc.strategy === "st_day"
+      ? "Day 15M"
+      : doc.strategy === "smc_4h"
+        ? "SMC 4H"
+        : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId].label;
   const head = `${doc.side === "long" ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(doc.symbol))} · ${escapeHtml(label)}`;
   return `${builder(resultR ?? 0)}\n<i>${head}</i>`;
 }
@@ -268,11 +275,15 @@ async function updateOpenSignals(errors: string[]): Promise<number> {
         continue;
       }
 
-      const profile = FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId];
-      const start = doc.signalTime.getTime() + profile.intervalMs;
-      const end = Math.min(Date.now(), start + SIGNAL_MAX_BARS * profile.intervalMs);
+      // SMC: savdo limit to'lgan shamdan keyin boshlanadi; FQ: signal shamidan keyin.
+      const { interval, intervalMs } =
+        doc.strategy === "smc_4h"
+          ? { interval: SMC_INTERVAL, intervalMs: SMC_INTERVAL_MS }
+          : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId];
+      const start = (doc.filledAt ?? doc.signalTime).getTime() + intervalMs;
+      const end = Math.min(Date.now(), start + SIGNAL_MAX_BARS * intervalMs);
       const candles = (
-        await getKlinesRange(doc.symbol, profile.interval, start, end, doc.marketType as "spot" | "futures")
+        await getKlinesRange(doc.symbol, interval, start, end, doc.marketType as "spot" | "futures")
       ).filter((c) => c.closeTime <= Date.now());
 
       const outcome = evaluateSignalOutcome(
@@ -393,7 +404,19 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
 
   const runs: { id: string; run: () => Promise<{ scanned: number; newSignals: number; sent: number }> }[] = [
     ...enabledFqProfiles().map((profile) => ({ id: profile.label, run: () => runFqSignals(profile, errors) })),
+    ...(env.SMC_4H_SIGNALS_ENABLED ? [{ id: "SMC 4H", run: () => runSmcSignals(errors) }] : []),
     ...(env.DAY_SIGNALS_ENABLED ? [{ id: "Day trade", run: () => runDaySignals(errors) }] : []),
+    ...(env.MOMENTUM_SIGNALS_ENABLED
+      ? [
+          {
+            id: "Momentum",
+            run: async () => {
+              const r = await runMomentumRebalance();
+              return { scanned: 0, newSignals: r.rebalanced ? 1 : 0, sent: r.sent ? 1 : 0 };
+            },
+          },
+        ]
+      : []),
   ];
 
   let scanned = 0;
@@ -410,7 +433,13 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
     }
   }
 
-  const updated = await updateOpenSignals(errors);
+  let updated = 0;
+  try {
+    updated += await updatePendingSmc(errors);
+  } catch (error) {
+    errors.push(`SMC pending: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  updated += await updateOpenSignals(errors);
 
   return {
     scanned,
@@ -535,7 +564,9 @@ export async function sendTestTelegramMessage(): Promise<void> {
       "Bot ulangan. Signal chiqqanda shu yerga xabar keladi:",
       "• Swing 1H (FQ v3) — kirish, stop, TP1/TP2",
       "• Swing 4H (FQ v3 + Fib) — kirish, stop, TP1/TP2",
+      "• SMC 4H — BOS + Fib 0.618 limit order (to'ldi / bekor xabari bilan)",
       "• Day trade (Supertrend 15M) — kirish, stop, chiqish flipda",
+      "• Momentum portfeli — har dushanba long/short savat (market-neutral)",
       "Natijalar (TP/SL/chiqish) asl xabarga reply sifatida keladi.",
     ].join("\n"),
   );

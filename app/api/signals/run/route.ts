@@ -7,7 +7,8 @@ import { runSignalCycle } from "@/lib/server/services/fq-signal.service";
 import { AppError } from "@/lib/server/utils/AppError";
 import { verifyToken } from "@/lib/server/utils/token";
 
-export const maxDuration = 60;
+// 4 ta strategiya ketma-ket (dushanba kuni momentum savati ~200 coin ham) — 60s yetmasligi mumkin.
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 function safeEqual(a: string, b: string): boolean {

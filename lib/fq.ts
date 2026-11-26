@@ -28,6 +28,8 @@ export const STATUS_META: Record<
   SignalStatus,
   { label: string; tone: "long" | "short" | "warn" | "muted" }
 > = {
+  pending: { label: "Limit kutilmoqda", tone: "muted" },
+  cancelled: { label: "Bekor", tone: "muted" },
   open: { label: "Ochiq", tone: "warn" },
   tp1: { label: "TP1 ✓ · BE", tone: "long" },
   tp2: { label: "TP2", tone: "long" },
@@ -40,6 +42,7 @@ export const STATUS_META: Record<
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
   fq_v3: "Swing 1H",
   fq_4h: "Swing 4H",
+  smc_4h: "SMC 4H",
   st_day: "Day 15M",
 };
 

@@ -33,6 +33,10 @@ const envSchema = z.object({
   FQ_1H_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 4H + Fib signallari. */
   FQ_4H_SIGNALS_ENABLED: boolFromEnv(true),
+  /** SMC 4H: BOS + Fib 0.618 limit order. */
+  SMC_4H_SIGNALS_ENABLED: boolFromEnv(true),
+  /** Haftalik momentum savati (market-neutral, dushanba UTC). */
+  MOMENTUM_SIGNALS_ENABLED: boolFromEnv(true),
   /** /api/signals/run ni himoyalaydi: `Authorization: Bearer <CRON_SECRET>`. */
   CRON_SECRET: z.string().min(16).optional(),
   /** true bo'lsa yangi foydalanuvchilar ro'yxatdan o'ta oladi (default: faqat birinchisi). */

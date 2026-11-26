@@ -30,7 +30,7 @@ export type FqAnalyzeQuery = z.infer<typeof fqAnalyzeQuerySchema>;
 export type FqScanQuery = z.infer<typeof fqScanQuerySchema>;
 
 export const signalsQuerySchema = z.object({
-  strategy: z.enum(["fq_v3", "fq_4h", "st_day"]).optional(),
+  strategy: z.enum(["fq_v3", "fq_4h", "smc_4h", "st_day"]).optional(),
 });
 
 export type SignalsQuery = z.infer<typeof signalsQuerySchema>;
