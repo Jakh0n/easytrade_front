@@ -95,6 +95,7 @@ function parseKline(raw: BinanceKlineRaw): Candle {
     close: Number(raw[4]),
     volume: Number(raw[5]),
     closeTime: raw[6],
+    takerBuyVolume: raw[9] !== undefined ? Number(raw[9]) : undefined,
   };
 }
 
