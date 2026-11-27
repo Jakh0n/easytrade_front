@@ -45,7 +45,7 @@ export const FQ_PROFILES: Record<FqStrategyId, FqProfile> = {
   fq_15m: {
     id: "fq_15m",
     interval: "15m",
-    htfInterval: "1h",
+    htfInterval: "4h",
     intervalMs: 15 * 60_000,
     config: FQ_15M_CONFIG,
     label: "Day 15M · FQ v3",
