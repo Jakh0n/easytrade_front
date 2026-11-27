@@ -4,6 +4,8 @@ import { getKlines, getKlinesRange } from "./binance.service";
 import { CHART_COLORS, renderSignalChart } from "./chart-image.service";
 import { runPool } from "./fq-scanner.service";
 import { getRegimeGate } from "./market-regime.service";
+import { mtfAllows, smcModelPasses, smcSignalProbability } from "./signal-quality.service";
+import { replyWithAiCommentary } from "./ai-commentary.service";
 import { SMC_CONFIG, computeSmcSeries, htfDirection, resolvePending, smcSetupAt, type SmcSetup } from "./smc/engine";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type { Candle, MarketType } from "../types/index";
@@ -42,7 +44,12 @@ function telegramActive(): boolean {
   return env.TELEGRAM_SIGNALS_ENABLED && isTelegramConfigured();
 }
 
-export function buildSmcMessage(symbol: string, setup: SmcSetup, regime: string | null = null): string {
+export function buildSmcMessage(
+  symbol: string,
+  setup: SmcSetup,
+  regime: string | null = null,
+  probability: number | null = null,
+): string {
   const long = setup.side === "long";
   const risk = Math.abs(setup.entry - setup.stopLoss);
   const r = (p: number) => (Math.abs(p - setup.entry) / risk).toFixed(1);
@@ -63,12 +70,21 @@ export function buildSmcMessage(symbol: string, setup: SmcSetup, regime: string 
     `Hajm: ${RISK_PCT}% risk → pozitsiya ≈ kapitalning <b>${notional.toFixed(0)}%</b>`,
   ];
   if (regime) lines.push(`🌐 Bozor: ${regime}`);
+  if (probability !== null) lines.push(`🧠 Model: foyda bilan yopilish ehtimoli ~${Math.round(probability * 100)}%`);
   if (url) lines.push("", `<a href="${url}">Grafik →</a>`);
   return lines.join("\n");
 }
 
-async function sendSetup(symbol: string, setup: SmcSetup, candles: Candle[], regime: string | null): Promise<number> {
-  const text = buildSmcMessage(symbol, setup, regime);
+async function sendSetup(
+  symbol: string,
+  setup: SmcSetup,
+  candles: Candle[],
+  regime: string | null,
+  probability: number | null,
+): Promise<number> {
+  const text = buildSmcMessage(symbol, setup, regime, probability);
+  let image: Buffer | null = null;
+  let messageId: number;
   try {
     const long = setup.side === "long";
     const from = Math.max(0, candles.length - 90);
@@ -88,11 +104,14 @@ async function sendSetup(symbol: string, setup: SmcSetup, candles: Candle[], reg
       position: { entry: setup.entry, stopLoss: setup.stopLoss, target: setup.tp2, targetLabel: "TP2" },
       formatPrice: fmt,
     });
-    return await sendTelegramPhoto(chart, text);
+    image = chart;
+    messageId = await sendTelegramPhoto(chart, text);
   } catch (error) {
     console.error(`SMC grafigi ${symbol}:`, error instanceof Error ? error.message : error);
-    return sendTelegramMessage(text);
+    messageId = await sendTelegramMessage(text);
   }
+  await replyWithAiCommentary(messageId, text, image, sendTelegramMessage);
+  return messageId;
 }
 
 /** Yangi 4H sham yopilgandan keyingi 30 daqiqa ichida skanerlash (cron har 5 daqiqada — 6 urinish). */
@@ -136,6 +155,10 @@ export async function runSmcSignals(
   let sent = 0;
   for (const { symbol, setup, candles } of found) {
     if (!regime.allows(setup.side, symbol)) continue;
+    // 1D EMA50/200 tasdig'i va model: eng past ehtimolli 35% setup tashlanadi.
+    if (!(await mtfAllows(STRATEGY, symbol, setup.side, market, errors))) continue;
+    const probability = await smcSignalProbability(symbol, setup.side, candles, market);
+    if (!smcModelPasses(probability)) continue;
     let doc: FqSignalDoc;
     try {
       doc = await FqSignal.create({
@@ -172,7 +195,7 @@ export async function runSmcSignals(
 
     if (!telegramActive()) continue;
     try {
-      const messageId = await sendSetup(symbol, setup, candles, regime.summary);
+      const messageId = await sendSetup(symbol, setup, candles, regime.summary, probability);
       await FqSignal.updateOne({ _id: doc._id }, { telegramMessageId: messageId });
       sent += 1;
     } catch (error) {

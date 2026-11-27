@@ -10,6 +10,8 @@ import { FQ_PROFILES, type FqProfile, type FqStrategyId } from "./fq.strategy.se
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "./fq-strategy/outcome";
 import { runMomentumRebalance } from "./momentum.service";
 import { getRegimeGate } from "./market-regime.service";
+import { mtfAllows } from "./signal-quality.service";
+import { replyWithAiCommentary } from "./ai-commentary.service";
 import { SMC_INTERVAL, SMC_INTERVAL_MS, runSmcSignals, updatePendingSmc } from "./smc.service";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type {
@@ -184,12 +186,18 @@ export async function buildSwingSignalChart(coin: FqScanCoin): Promise<Buffer> {
 
 /** Rasm + matn; rasm chizish yoki sendPhoto xato bersa — oddiy matn (signal yo'qolmaydi). */
 async function sendWithChart(symbol: string, text: string, chart: () => Promise<Buffer>): Promise<number> {
+  let image: Buffer | null = null;
+  let messageId: number;
   try {
-    return await sendTelegramPhoto(await chart(), text);
+    image = await chart();
+    messageId = await sendTelegramPhoto(image, text);
   } catch (error) {
     console.error(`Signal grafigi ${symbol}:`, error instanceof Error ? error.message : error);
-    return sendTelegramMessage(text);
+    messageId = await sendTelegramMessage(text);
   }
+  // ChatGPT izohi — signalga reply (filtr emas; xato bo'lsa jim o'tadi).
+  await replyWithAiCommentary(messageId, text, image, sendTelegramMessage);
+  return messageId;
 }
 
 /** Day signalni rasm bilan yuboradi. */
@@ -367,6 +375,8 @@ async function runFqSignals(
 
   for (const coin of fresh) {
     if (openSymbols.has(coin.symbol)) continue;
+    // Yuqori TF tasdig'i (1D EMA50/200) — strategiyaga qoida bo'lsa.
+    if (!(await mtfAllows(profile.id, coin.symbol, coin.side as "long" | "short", coin.marketType, errors))) continue;
 
     let doc: FqSignalDoc;
     try {
@@ -484,6 +494,8 @@ async function runDaySignals(errors: string[]): Promise<{ scanned: number; newSi
 
   for (const coin of fresh) {
     if (openSymbols.has(coin.symbol)) continue;
+    // 4H EMA50/200 savdoga qarshi bo'lmasin.
+    if (!(await mtfAllows("st_day", coin.symbol, coin.side as "long" | "short", coin.marketType, errors))) continue;
     let doc: FqSignalDoc;
     try {
       doc = await FqSignal.create({
@@ -585,7 +597,8 @@ export async function sendTestTelegramMessage(): Promise<void> {
       "• SMC 4H — BOS + Fib 0.618 limit order (to'ldi / bekor xabari bilan)",
       "• Day trade (Supertrend 15M) — kirish, stop, chiqish flipda",
       "• Momentum portfeli — har dushanba long/short savat (market-neutral)",
-      "Barcha signallar bozor rejimi (BTC / TOTAL3 / BTC.D) bilan filtrlanadi.",
+      "Barcha signallar bozor rejimi (BTC / TOTAL3 / BTC.D) va yuqori timeframe bilan filtrlanadi.",
+      "SMC signallarida model ehtimoli ko'rsatiladi; har signalga AI izohi reply bo'lib keladi.",
       "Natijalar (TP/SL/chiqish) asl xabarga reply sifatida keladi.",
     ].join("\n"),
   );

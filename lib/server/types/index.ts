@@ -8,6 +8,8 @@ export interface Candle {
   close: number;
   volume: number;
   closeTime: number;
+  /** Taker (market) xaridorlar hajmi — kline'ning 9-maydoni. Eski keshda bo'lmasligi mumkin. */
+  takerBuyVolume?: number;
 }
 
 export interface Ticker24hr {

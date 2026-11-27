@@ -41,6 +41,12 @@ const envSchema = z.object({
   MOMENTUM_SIGNALS_ENABLED: boolFromEnv(true),
   /** Bozor rejimi filtri (BTC / TOTAL3 / BTC.D proxy) — strategiyaga mos bo'lmagan tomondagi signallar yuborilmaydi. */
   MARKET_REGIME_FILTER_ENABLED: boolFromEnv(true),
+  /** Yuqori timeframe tasdig'i va SMC ehtimollik modeli (backtest bilan tanlangan). */
+  SIGNAL_QUALITY_FILTERS_ENABLED: boolFromEnv(true),
+  /** ChatGPT izohi: signal yuborilgach unga reply sifatida qisqa tahlil (filtr emas). Kalit bo'lmasa o'chiq. */
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().min(1).default("gpt-5.5"),
+  AI_COMMENTARY_ENABLED: boolFromEnv(true),
   /** /api/signals/run ni himoyalaydi: `Authorization: Bearer <CRON_SECRET>`. */
   CRON_SECRET: z.string().min(16).optional(),
   /** true bo'lsa yangi foydalanuvchilar ro'yxatdan o'ta oladi (default: faqat birinchisi). */
