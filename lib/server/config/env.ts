@@ -7,7 +7,7 @@ function boolFromEnv(defaultValue = false) {
     .transform((value) => {
       if (value === undefined) return defaultValue;
       if (typeof value === "boolean") return value;
-      return value.toLowerCase() === "true";
+      return value.trim().toLowerCase() === "true";
     });
 }
 
@@ -45,8 +45,8 @@ const envSchema = z.object({
   SIGNAL_QUALITY_FILTERS_ENABLED: boolFromEnv(true),
   /** Signal engine v2 (`lib/server/signal-engine`): /api/engine/run does nothing when false. */
   ENGINE_SIGNALS_ENABLED: boolFromEnv(true),
-  /** Engine v2 → Telegram. Off by default: signals are saved to the DB until the backtest is reviewed. */
-  ENGINE_TELEGRAM_ENABLED: boolFromEnv(false),
+  /** Engine v2 → Telegram. Set "false" to only save signals to the DB (/engine page). */
+  ENGINE_TELEGRAM_ENABLED: boolFromEnv(true),
   /** ChatGPT izohi: signal yuborilgach unga reply sifatida qisqa tahlil (filtr emas). Kalit bo'lmasa o'chiq. */
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-5.5"),
