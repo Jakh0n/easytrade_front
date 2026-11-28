@@ -1,9 +1,10 @@
 import { getAll24hrTickers, getCryptoFuturesSymbols } from "./binance.service";
-import { FQ_PROFILES, buildFqAnalysis, type FqStrategyId } from "./fq.strategy.service";
+import { FQ_PROFILES, buildFqAnalysis, type FqProfile, type FqStrategyId } from "./fq.strategy.service";
 import type {
   FqScanCoin,
   FqScanResponse,
   MarketType,
+  Ticker24hr,
 } from "../types/index";
 
 const EXCLUDED_SYMBOLS = new Set([
@@ -18,8 +19,8 @@ const EXCLUDED_SYMBOLS = new Set([
   "XUSDUSDT",
 ]);
 
-const MAX_SCAN = 100;
-const MIN_QUOTE_VOLUME = 5_000_000;
+export const MAX_SCAN = 100;
+export const MIN_QUOTE_VOLUME = 5_000_000;
 const CONCURRENCY = 6;
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
@@ -30,6 +31,24 @@ const cache = new Map<string, { data: FqScanResponse; expiresAt: number }>();
 export function isScannableSymbol(symbol: string): boolean {
   if (!symbol.endsWith("USDT") || EXCLUDED_SYMBOLS.has(symbol)) return false;
   return !/(UP|DOWN|BEAR|BULL)USDT$/.test(symbol);
+}
+
+/** Skanerlanadigan coinlar: kripto USDT, hajm ≥ MIN, profil ro'yxati, hajm bo'yicha top MAX_SCAN. */
+export function buildFqUniverse(
+  tickers: Ticker24hr[],
+  crypto: Set<string> | null,
+  profile: Pick<FqProfile, "symbols">,
+): Ticker24hr[] {
+  return tickers
+    .filter(
+      (t) =>
+        isScannableSymbol(t.symbol) &&
+        t.quoteVolume >= MIN_QUOTE_VOLUME &&
+        (!crypto || crypto.has(t.symbol)) &&
+        (!profile.symbols || profile.symbols.includes(t.symbol)),
+    )
+    .sort((a, b) => b.quoteVolume - a.quoteVolume)
+    .slice(0, MAX_SCAN);
 }
 
 export async function runPool<T, R>(
@@ -86,16 +105,7 @@ export async function runFqScan(
     // Spot'da TradFi yo'q; futures'da faqat kripto (metall/neft/aksiyalar chiqariladi).
     marketType === "futures" ? getCryptoFuturesSymbols() : Promise.resolve(null),
   ]);
-  const universe = tickers
-    .filter(
-      (t) =>
-        isScannableSymbol(t.symbol) &&
-        t.quoteVolume >= MIN_QUOTE_VOLUME &&
-        (!crypto || crypto.has(t.symbol)) &&
-        (!profile.symbols || profile.symbols.includes(t.symbol)),
-    )
-    .sort((a, b) => b.quoteVolume - a.quoteVolume)
-    .slice(0, MAX_SCAN);
+  const universe = buildFqUniverse(tickers, crypto, profile);
 
   const coins = await runPool(universe, CONCURRENCY, async (ticker) => {
     try {
@@ -106,7 +116,8 @@ export async function runFqScan(
         quoteVolume: ticker.quoteVolume,
       };
       return coin;
-    } catch {
+    } catch (error) {
+      console.error(`FQ skaner ${strategy} ${ticker.symbol}:`, error instanceof Error ? error.message : error);
       return null;
     }
   });

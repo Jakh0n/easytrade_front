@@ -15,16 +15,16 @@ import type { Candle, MarketType, StrategyId } from "../types/index";
  * (EMA 200, train va test davrlarining ikkalasida ham yaxshilagan, EMA 100 da ham tasdiqlangan variant).
  */
 export const REGIME_FILTERS: Record<StrategyId, { rule: RegimeRule; tf: string }> = {
-  /** BTC va TOTAL3 ikkalasi 4H EMA200 bo'yicha bir tomonda. */
-  fq_15m: { rule: "both", tf: "4h" },
   /** BTC 4H EMA200 tomoniga. */
   fq_v3: { rule: "btc", tf: "4h" },
   /** Altlar: TOTAL3 ▲ va BTC.D ▼ (alt season) bo'lsa LONG; BTC/ETH — o'z 1D trendi. */
   fq_4h: { rule: "dom", tf: "1d" },
-  /** BTC 1H EMA200 tomoniga. */
-  st_day: { rule: "btc", tf: "1h" },
   /** TOTAL3 1D EMA200 tomoniga. */
   smc_4h: { rule: "alt", tf: "1d" },
+  /** SMC 5M o'z 4H trend qoidasini ishlatadi — rejim filtri chaqirilmaydi. */
+  smc_5m: { rule: "btc", tf: "4h" },
+  /** SMC MTF ham o'z 4H trend qoidasini ishlatadi — rejim filtri chaqirilmaydi. */
+  smc_mtf: { rule: "btc", tf: "4h" },
 };
 
 const LIMIT = 500;

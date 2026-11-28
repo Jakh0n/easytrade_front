@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchDayScan,
   fetchFqAnalysis,
   fetchFqScan,
   fetchSignals,
@@ -26,25 +25,6 @@ export function useRefreshScan(marketType: MarketType) {
   return useMutation({
     mutationFn: () => fetchFqScan(marketType, true),
     onSuccess: (data) => client.setQueryData(["fq-scan", marketType], data),
-  });
-}
-
-export function useDayScan(marketType: MarketType, enabled = true) {
-  return useQuery({
-    queryKey: ["day-scan", marketType],
-    queryFn: () => fetchDayScan(marketType),
-    enabled,
-    staleTime: 60_000,
-    // 15M shamlar — skanerni tez-tez yangilab turamiz.
-    refetchInterval: 2 * 60_000,
-  });
-}
-
-export function useRefreshDayScan(marketType: MarketType) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: () => fetchDayScan(marketType, true),
-    onSuccess: (data) => client.setQueryData(["day-scan", marketType], data),
   });
 }
 

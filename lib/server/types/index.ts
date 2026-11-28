@@ -95,8 +95,8 @@ export interface StrategyChecklistItem {
 }
 
 export interface FqAnalysisResponse {
-  /** fq_15m = Day 15M, fq_v3 = Swing 1H, fq_4h = Swing 4H + Fib (bitta dvigatel, turli profil). */
-  strategyId: "fq_15m" | "fq_v3" | "fq_4h";
+  /** fq_v3 = Swing 1H, fq_4h = Swing 4H + Fib (bitta dvigatel, turli profil). */
+  strategyId: "fq_v3" | "fq_4h";
   symbol: string;
   marketType: MarketType;
   currentPrice: number;
@@ -157,48 +157,9 @@ export interface FqScanResponse {
   };
 }
 
-// ───────────── Day trade (Supertrend 15M) ─────────────
-
-export interface DayAnalysis {
-  strategyId: "st_day";
-  symbol: string;
-  marketType: MarketType;
-  currentPrice: number;
-  timeframe: string;
-  htfTimeframe: string;
-  htfBias: "bullish" | "bearish" | null;
-  /** Hozirgi Supertrend yo'nalishi. */
-  stDir: "up" | "down" | null;
-  /** Hozirgi Supertrend chizig'i (trailing stop). */
-  stLine: number;
-  /** 1H trend tomonga oxirgi flip necha sham oldin (topilmasa null). */
-  flipBarsAgo: number | null;
-  side: TradeSide;
-  verdict: FqVerdict;
-  reason: string;
-  /** Flip shamining openTime (ms) — dedupe kaliti. */
-  signalTime: number | null;
-  entry: number;
-  stopLoss: number;
-  /** Kirishdan hozirgi narxgacha, R da (flip bo'lsa). */
-  currentR: number | null;
-  riskPercent: number;
-  priceChangePercent: number;
-  quoteVolume: number;
-  generatedAt: string;
-}
-
-export interface DayScanResponse {
-  marketType: MarketType;
-  scanned: number;
-  updatedAt: string;
-  coins: DayAnalysis[];
-  stats: { enter: number; inTrade: number; waiting: number; avoid: number };
-}
-
 // ───────────── Signal tarixi ─────────────
 
-export type StrategyId = "fq_15m" | "fq_v3" | "fq_4h" | "smc_4h" | "st_day";
+export type StrategyId = "fq_v3" | "fq_4h" | "smc_4h" | "smc_5m" | "smc_mtf";
 
 /** pending — limit order kutilmoqda (SMC); cancelled — to'lmasdan bekor bo'ldi. */
 export type SignalStatus = "pending" | "cancelled" | "open" | "tp1" | "tp2" | "be" | "sl" | "exit" | "expired";
@@ -213,7 +174,6 @@ export interface SignalRecord {
   signalTime: string;
   entry: number;
   stopLoss: number;
-  /** Day trade signallarida TP yo'q — null. */
   tp1: number | null;
   tp2: number | null;
   score: number;

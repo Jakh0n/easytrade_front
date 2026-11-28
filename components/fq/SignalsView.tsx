@@ -24,11 +24,11 @@ type Filter = "all" | StrategyId;
 
 const FILTER_OPTIONS: { value: Filter; label: string }[] = [
   { value: "all", label: "Hammasi" },
-  { value: "fq_15m", label: STRATEGY_LABEL.fq_15m },
   { value: "fq_v3", label: STRATEGY_LABEL.fq_v3 },
   { value: "fq_4h", label: STRATEGY_LABEL.fq_4h },
   { value: "smc_4h", label: STRATEGY_LABEL.smc_4h },
-  { value: "st_day", label: STRATEGY_LABEL.st_day },
+  { value: "smc_5m", label: STRATEGY_LABEL.smc_5m },
+  { value: "smc_mtf", label: STRATEGY_LABEL.smc_mtf },
 ];
 
 /** Yopilgan signallar bo'yicha kumulyativ R egri chizig'i (eng eskisidan yangisiga). */
@@ -114,8 +114,7 @@ export function SignalsView() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Signallar</h1>
           <p className="text-sm text-muted-foreground">
-            Swing (FQ v3, TP1 50% + qolgan qism) va Day trade (Supertrend,
-            flipda chiqish) natijalari — R birligida
+            Swing (FQ v3, TP1 50% + qolgan qism) va SMC natijalari — R birligida
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -259,11 +258,13 @@ export function SignalsView() {
                           {pairLabel(s.symbol)}
                         </Link>
                         <span className="ml-1.5 text-xs text-muted-foreground">
-                          {s.strategy === "st_day"
-                            ? "Day"
-                            : s.strategy === "smc_4h"
+                          {s.strategy === "smc_4h"
                               ? "OTE"
-                            : `${s.strategy === "fq_4h" ? "4H " : s.strategy === "fq_15m" ? "15M " : ""}${s.setup === "breakout" ? "BO" : "PB"}`}
+                            : s.strategy === "smc_5m"
+                              ? "5M"
+                            : s.strategy === "smc_mtf"
+                              ? "MTF"
+                            : `${s.strategy === "fq_4h" ? "4H " : ""}${s.setup === "breakout" ? "BO" : "PB"}`}
                         </span>
                       </td>
                       <td className="px-3 py-2.5">

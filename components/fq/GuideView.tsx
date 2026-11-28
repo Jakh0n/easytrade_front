@@ -21,7 +21,7 @@ const STRATEGIES: { name: string; status: string; tone: "long" | "warn" | "muted
     role: "Ikkinchi darajali",
   },
   {
-    name: "Swing 1H · Swing 4H · Day 15M",
+    name: "Swing 1H · Swing 4H",
     status: "Zararda yoki barqaror emas",
     tone: "muted",
     role: "Faqat kuzatish",

@@ -10,8 +10,15 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { SMC_CONFIG, backtestSmc, type SmcConfig } from "../backtest/smc-backtest";
-import { backtestDay, backtestFq, summarize, type BacktestStats, type BacktestTrade } from "../backtest/fq-backtest";
+import {
+  INTRADAY_CONFIG,
+  SMC_CONFIG,
+  backtestIntraday,
+  backtestSmc,
+  type IntradayConfig,
+  type SmcConfig,
+} from "../backtest/smc-backtest";
+import { backtestFq, summarize, type BacktestStats, type BacktestTrade } from "../backtest/fq-backtest";
 import { FQ_SWING_CONFIG, type FqConfig } from "../services/fq-strategy/engine";
 import {
   MAX_KLINES_PER_REQUEST,
@@ -23,6 +30,7 @@ import type { Candle } from "../types/index";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache", "backtest");
 const INTERVAL_MS: Record<string, number> = {
+  "5m": 300_000,
   "15m": 900_000,
   "1h": 3_600_000,
   "4h": 14_400_000,
@@ -62,6 +70,18 @@ export const SMC_VARIANTS: Record<string, Partial<SmcConfig>> = {
   "noHtf618w10": { useHtf: false, maxWait: 10 },
   "noHtf50w10": { useHtf: false, entryFib: 0.5, maxWait: 10 },
   "noHtfOb": { useHtf: false, entry: "ob" },
+};
+
+export const INTRADAY_VARIANTS: Record<string, Partial<IntradayConfig>> = {
+  base: {},
+  edge: { entryAt: "edge" },
+  tp3: { tp1R: 1, tp2R: 3 },
+  tp2full: { tp1R: 2, tp2R: 2 },
+  noSession: { session: null },
+  noHtf: { useHtf: false },
+  ny: { session: [13, 20] },
+  london: { session: [7, 12] },
+  wide: { minRiskAtr: 1 },
 };
 
 function arg(name: string): string | undefined {
@@ -123,8 +143,9 @@ function fmt(s: BacktestStats): string {
 async function main(): Promise<void> {
   const days = Number(arg("days") ?? 730);
   const strategy = arg("strategy") ?? "fq";
-  const tf = arg("tf") ?? (strategy === "day" ? "15m" : "1h");
-  const htfTf = arg("htf") ?? (strategy === "day" ? "1h" : tf === "4h" ? "1d" : "4h");
+  const intraday = strategy === "smcday";
+  const tf = arg("tf") ?? (intraday ? "15m" : "1h");
+  const htfTf = arg("htf") ?? (intraday ? "1h" : tf === "4h" ? "1d" : "4h");
   const entryMode = (arg("entry") ?? "market") as "market" | "limit";
   const limitFrac = Number(arg("limit-frac") ?? 0.5);
   const limitBars = Number(arg("limit-bars") ?? 3);
@@ -132,10 +153,10 @@ async function main(): Promise<void> {
   const start = end - days * 86_400_000;
   // HTF EMA200 uchun qo'shimcha tarix.
   const htfStart = start - 220 * INTERVAL_MS[htfTf]!;
-  const variantNames =
-    strategy === "day"
-      ? ["day"]
-      : (arg("variants") ?? Object.keys(strategy === "smc" ? SMC_VARIANTS : VARIANTS).join(",")).split(",");
+  const variantNames = (
+    arg("variants") ??
+    Object.keys(strategy === "smc" ? SMC_VARIANTS : strategy === "smcday" ? INTRADAY_VARIANTS : VARIANTS).join(",")
+  ).split(",");
   const symbols = arg("symbols")?.split(",") ?? (await universe(Number(arg("universe") ?? 30)));
 
   console.log(
@@ -163,19 +184,34 @@ async function main(): Promise<void> {
   console.log("─".repeat(12 + 2 * (header.length + 9)));
 
   for (const name of variantNames) {
-    const overrides = name === "day" ? {} : strategy === "smc" ? SMC_VARIANTS[name] : VARIANTS[name];
+    const overrides =
+      strategy === "smc"
+        ? SMC_VARIANTS[name]
+        : strategy === "smcday"
+          ? INTRADAY_VARIANTS[name]
+          : VARIANTS[name];
     if (!overrides) {
       console.log(`${name}: noma'lum variant`);
       continue;
     }
     const config: FqConfig = { ...FQ_SWING_CONFIG, ...(strategy === "fq" ? (overrides as Partial<FqConfig>) : {}) };
     const trades: BacktestTrade[] = data.flatMap((d) =>
-      strategy === "day"
-        ? backtestDay(d.symbol, d.candles, d.htf)
-        : strategy === "smc"
+      strategy === "smcday"
+          ? backtestIntraday(d.symbol, d.candles, d.htf, { ...INTRADAY_CONFIG, ...(overrides as Partial<IntradayConfig>) })
+          : strategy === "smc"
           ? backtestSmc(d.symbol, d.candles, d.htf, { ...SMC_CONFIG, ...(overrides as Partial<SmcConfig>) })
         : backtestFq(d.symbol, d.candles, d.htf, { config, entryMode, limitFrac, limitBars }),
     );
+    // Portfel limiti: bir vaqtda bitta tomonda (long/short) eng ko'pi N ta ochiq savdo.
+    const cap = Number(arg("max-side") ?? 0);
+    if (cap > 0) {
+      const accepted: BacktestTrade[] = [];
+      for (const tr of [...trades].sort((x, y) => x.signalTime - y.signalTime)) {
+        const openSame = accepted.filter((o) => o.side === tr.side && o.closedAt > tr.signalTime).length;
+        if (openSame < cap) accepted.push(tr);
+      }
+      trades.splice(0, trades.length, ...accepted);
+    }
     const train = trades.filter((t) => t.signalTime < split);
     const test = trades.filter((t) => t.signalTime >= split);
     console.log(`${name.padEnd(12)} │       ${fmt(summarize(train))} │       ${fmt(summarize(test))}`);

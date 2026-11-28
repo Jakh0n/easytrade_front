@@ -8,8 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFqScan, useRefreshScan } from "@/hooks/useFq";
 import { ApiError, type MarketType } from "@/lib/api";
 import { timeAgo } from "@/lib/fq";
-import { DayScannerView } from "./DayScannerView";
-import { EmptyState, MarketToggle, Metric, Panel, SegmentToggle } from "./primitives";
+import { EmptyState, MarketToggle, Metric, Panel } from "./primitives";
 import { SignalCard } from "./SignalCard";
 import { WatchTable } from "./WatchTable";
 
@@ -31,24 +30,9 @@ function Breadth({ up, down, total }: { up: number; down: number; total: number 
   );
 }
 
-type Mode = "swing" | "day";
-
-const MODE_OPTIONS: { value: Mode; label: string }[] = [
-  { value: "swing", label: "Swing 1H" },
-  { value: "day", label: "Day 15M" },
-];
-
 export function ScannerView() {
-  const [mode, setMode] = useState<Mode>("swing");
   const [market, setMarket] = useState<MarketType>("futures");
-  const toggle = <SegmentToggle value={mode} onChange={setMode} options={MODE_OPTIONS} label="Strategiya" />;
-  const marketToggle = <MarketToggle value={market} onChange={setMarket} />;
-
-  return mode === "swing" ? (
-    <SwingScanner market={market} controls={<>{toggle}{marketToggle}</>} />
-  ) : (
-    <DayScannerView market={market} controls={<>{toggle}{marketToggle}</>} />
-  );
+  return <SwingScanner market={market} controls={<MarketToggle value={market} onChange={setMarket} />} />;
 }
 
 function SwingScanner({ market, controls }: { market: MarketType; controls: ReactNode }) {

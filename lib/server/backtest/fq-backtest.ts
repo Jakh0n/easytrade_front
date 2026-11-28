@@ -8,7 +8,6 @@ import {
   type FqHtfBias,
 } from "../services/fq-strategy/engine";
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "../services/fq-strategy/outcome";
-import { DAY_CONFIG, computeSupertrend, evaluateDayOutcome } from "../services/day-strategy/engine";
 import type { Candle, MarketType, SignalStatus } from "../types/index";
 
 /**
@@ -211,63 +210,4 @@ export function summarize(trades: BacktestTrade[]): BacktestStats {
     avgGrossR: n ? sorted.reduce((sum, tr) => sum + tr.grossR, 0) / n : 0,
     avgCostR: n ? sorted.reduce((sum, tr) => sum + tr.costR, 0) / n : 0,
   };
-}
-
-/**
- * Day trade (Supertrend 15M + 1H EMA 50/200) — live `buildDayFromCandles` + `evaluateDayOutcome`
- * bilan bir xil: flip 1H trend tomonga bo'lgan sham close'ida kirish, stop Supertrend chizig'ida.
- */
-export function backtestDay(
-  symbol: string,
-  candles: Candle[],
-  htf: Candle[],
-  options: Pick<BacktestOptions, "costPerSide" | "marketType" | "warmupBars" | "filter"> = {},
-): BacktestTrade[] {
-  const costPerSide = options.costPerSide ?? 0.0007;
-  const marketType = options.marketType ?? "futures";
-  const warmup = options.warmupBars ?? 300;
-  const { dir, line } = computeSupertrend(candles);
-  const closes = htf.map((c) => c.close);
-  const slow = calculateEMA(closes, DAY_CONFIG.htfSlowLen);
-  const fast = calculateEMA(closes, DAY_CONFIG.htfFastLen);
-  const trades: BacktestTrade[] = [];
-  let h = -1;
-  let busyUntil = -Infinity;
-
-  for (let t = warmup; t < candles.length - 1; t++) {
-    const bar = candles[t]!;
-    while (h + 1 < htf.length && htf[h + 1]!.closeTime <= bar.closeTime) h++;
-    if (bar.closeTime <= busyUntil || h < DAY_CONFIG.htfSlowLen - 1) continue;
-    const c = closes[h]!;
-    const bias = c > slow[h]! && fast[h]! > slow[h]! ? 1 : c < slow[h]! && fast[h]! < slow[h]! ? -1 : 0;
-    if (!bias || (bias === -1 && marketType !== "futures")) continue;
-    if (dir[t] !== bias || dir[t - 1] !== -bias) continue;
-
-    const entry = bar.close;
-    const stopLoss = line[t]!;
-    const risk = Math.abs(entry - stopLoss);
-    if (!(risk > 0)) continue;
-    const side = bias === 1 ? "long" : "short";
-    if (options.filter && !options.filter(side, bar.closeTime)) continue;
-    const outcome = evaluateDayOutcome(
-      { side, entry, stopLoss, signalTime: bar.openTime },
-      candles.slice(Math.max(0, t - warmup), t + DAY_CONFIG.maxBars + 1),
-    );
-    if (outcome.resultR === null || outcome.closedAt === null) break;
-    const costR = (2 * costPerSide * entry) / risk;
-    trades.push({
-      symbol,
-      side,
-      setup: "breakout",
-      signalTime: bar.openTime,
-      closedAt: outcome.closedAt,
-      status: outcome.status,
-      grossR: outcome.resultR,
-      costR,
-      netR: outcome.resultR - costR,
-      confluences: [],
-    });
-    busyUntil = outcome.closedAt;
-  }
-  return trades;
 }

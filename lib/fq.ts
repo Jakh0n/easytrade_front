@@ -40,11 +40,11 @@ export const STATUS_META: Record<
 };
 
 export const STRATEGY_LABEL: Record<StrategyId, string> = {
-  fq_15m: "FQ 15M",
   fq_v3: "Swing 1H",
   fq_4h: "Swing 4H",
   smc_4h: "SMC 4H",
-  st_day: "Day 15M",
+  smc_5m: "SMC 5M",
+  smc_mtf: "SMC MTF",
 };
 
 export const TONE_CLASS = {

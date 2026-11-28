@@ -1,11 +1,9 @@
 import { env } from "../config/env";
-import { FqSignal, type FqSignalDoc } from "../models/FqSignal";
+import { FqSignal, LEGACY_STRATEGY_IDS, type FqSignalDoc } from "../models/FqSignal";
 import { getKlines, getKlinesRange } from "./binance.service";
 import { CHART_COLORS, renderSignalChart } from "./chart-image.service";
 import { calculateEMA } from "./indicators.service";
 import { runFqScan } from "./fq-scanner.service";
-import { runDayScan } from "./day.strategy.service";
-import { DAY_BAR_MS, DAY_CONFIG, computeSupertrend, evaluateDayOutcome } from "./day-strategy/engine";
 import { FQ_PROFILES, type FqProfile, type FqStrategyId } from "./fq.strategy.service";
 import { evaluateSignalOutcome, SIGNAL_MAX_BARS } from "./fq-strategy/outcome";
 import { runMomentumRebalance } from "./momentum.service";
@@ -13,10 +11,10 @@ import { getRegimeGate } from "./market-regime.service";
 import { mtfAllows } from "./signal-quality.service";
 import { replyWithAiCommentary } from "./ai-commentary.service";
 import { SMC_INTERVAL, SMC_INTERVAL_MS, runSmcSignals, updatePendingSmc } from "./smc.service";
+import { CHECKER_INTERVAL, CHECKER_INTERVAL_MS, runCheckerSignals } from "./signal-checker/telegram";
+import { MTF_INTERVAL, MTF_INTERVAL_MS, MTF_LABEL, runMtfSignals, updatePendingMtf } from "./mtf-strategy/signals";
 import { isTelegramConfigured, sendTelegramMessage, sendTelegramPhoto } from "./telegram.service";
 import type {
-  Candle,
-  DayAnalysis,
   FqScanCoin,
   SignalRecord,
   SignalRunResult,
@@ -24,9 +22,6 @@ import type {
   SignalsResponse,
   StrategyId,
 } from "../types/index";
-
-/** Day signal natijasini hisoblashda Supertrend uchun isitish shamlari. */
-const DAY_WARMUP_BARS = 250;
 
 /** Eski hujjatlarda `strategy` maydoni yo'q — ular FQ v3 hisoblanadi. */
 function strategyFilter(strategy: StrategyId): { strategy: { $in: (StrategyId | null)[] } } {
@@ -98,62 +93,7 @@ export function buildSignalMessage(coin: FqScanCoin, regime: string | null = nul
   return lines.join("\n");
 }
 
-export function buildDaySignalMessage(coin: DayAnalysis, regime: string | null = null): string {
-  const long = coin.side === "long";
-  const stopPct = Math.abs((coin.stopLoss - coin.entry) / coin.entry) * 100;
-  const notionalPct = (coin.riskPercent / stopPct) * 100;
-  const url = coinUrl(coin.symbol);
-  const lines = [
-    `${long ? "🟢" : "🔴"} <b>${long ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(coin.symbol))}</b> — Day trade`,
-    `📌 <b>Day 15M · Supertrend</b>`,
-    `<i>Supertrend(${DAY_CONFIG.stLen}, ${DAY_CONFIG.stMult}) · ${coin.timeframe.toUpperCase()} · ${coin.htfTimeframe.toUpperCase()} trend ${coin.htfBias ?? "—"}</i>`,
-    "",
-    `Kirish:  <code>${formatSignalPrice(coin.entry)}</code>`,
-    `Stop:    <code>${formatSignalPrice(coin.stopLoss)}</code>  (${pctFrom(coin.entry, coin.stopLoss)})`,
-    `Chiqish: Supertrend teskari o'girilganda (TP yo'q, trend bilan yurish)`,
-    "",
-    `Hajm: ${coin.riskPercent}% risk → pozitsiya ≈ kapitalning <b>${notionalPct.toFixed(0)}%</b>${notionalPct > 100 ? ` (≈${Math.ceil(notionalPct / 100)}x leverage)` : ""}`,
-    `24s ${coin.priceChangePercent >= 0 ? "+" : ""}${coin.priceChangePercent.toFixed(2)}% · win rate past (~30%), foyda katta savdolardan`,
-  ];
-  if (regime) lines.push(`🌐 Bozor: ${escapeHtml(regime)}`);
-  if (url) lines.push("", `<a href="${url}">Grafik →</a>`);
-  return lines.join("\n");
-}
-
-/** Day signal grafigi: oxirgi ~90 ta 15M sham, Supertrend, kirish/stop. */
-const DAY_CHART_BARS = 90;
-/** Day'da TP yo'q — yashil zona faqat yo'nalish uchun 2R mo'ljal (backtestda foyda katta savdolardan). */
-const DAY_CHART_TARGET_R = 2;
-export async function buildDaySignalChart(coin: DayAnalysis, candlesOverride?: Candle[]): Promise<Buffer> {
-  const candles =
-    candlesOverride ??
-    (await getKlines(coin.symbol, DAY_CONFIG.interval, 500, coin.marketType)).filter((c) => c.closeTime <= Date.now());
-  const { dir, line } = computeSupertrend(candles);
-  const from = Math.max(0, candles.length - DAY_CHART_BARS);
-  const long = coin.side === "long";
-  return renderSignalChart({
-    title: `${long ? "LONG" : "SHORT"} · ${pairLabel(coin.symbol)} — savdoga kirildi`,
-    subtitle: `Day trade · Supertrend(${DAY_CONFIG.stLen}, ${DAY_CONFIG.stMult}) · ${DAY_CONFIG.interval.toUpperCase()} · ${DAY_CONFIG.htfInterval.toUpperCase()} trend ${coin.htfBias ?? "—"}`,
-    side: long ? "long" : "short",
-    candles: candles.slice(from),
-    lines: [{ values: line.slice(from), dir: dir.slice(from), label: `Supertrend(${DAY_CONFIG.stLen}, ${DAY_CONFIG.stMult})` }],
-    levels: [
-      { price: coin.stopLoss, label: "STOP", color: CHART_COLORS.stop },
-      { price: coin.entry, label: "KIRISH", color: CHART_COLORS.entry },
-    ],
-    signalTime: coin.signalTime ?? undefined,
-    marker: `${long ? "LONG" : "SHORT"} ST`,
-    position: {
-      entry: coin.entry,
-      stopLoss: coin.stopLoss,
-      target: coin.entry + (coin.entry - coin.stopLoss) * DAY_CHART_TARGET_R,
-      targetLabel: "Mo'ljal (TP emas)",
-    },
-    formatPrice: formatSignalPrice,
-  });
-}
-
-/** Swing signal grafigi: oxirgi ~90 ta sham (15M, 1H yoki 4H), EMA 20/50, kirish/stop/TP1/TP2. */
+/** Swing signal grafigi: oxirgi ~90 ta sham (1H yoki 4H), EMA 20/50, kirish/stop/TP1/TP2. */
 const SWING_CHART_BARS = 90;
 export async function buildSwingSignalChart(coin: FqScanCoin): Promise<Buffer> {
   const raw = await getKlines(coin.symbol, coin.timeframe, 300, coin.marketType);
@@ -200,17 +140,11 @@ async function sendWithChart(symbol: string, text: string, chart: () => Promise<
   return messageId;
 }
 
-/** Day signalni rasm bilan yuboradi. */
-async function sendDaySignal(coin: DayAnalysis, regime: string | null): Promise<number> {
-  return sendWithChart(coin.symbol, buildDaySignalMessage(coin, regime), () => buildDaySignalChart(coin));
-}
-
 const STATUS_MESSAGES: Partial<Record<SignalStatus, (r: number) => string>> = {
   tp1: () => "✅ <b>TP1 urildi</b> — 50% yopildi (+1R), stop BE ga surildi",
   tp2: (r) => `🎯 <b>TP2 urildi</b> — savdo yopildi, jami <b>+${r.toFixed(2)}R</b>`,
   be: (r) => `⚖️ <b>BE da yopildi</b> — jami <b>+${r.toFixed(2)}R</b>`,
   sl: (r) => `🛑 <b>Stop urildi</b> — <b>${r.toFixed(2)}R</b>`,
-  exit: (r) => `🔁 <b>Supertrend teskari</b> — savdo yopildi, natija <b>${r >= 0 ? "+" : ""}${r.toFixed(2)}R</b>`,
   expired: (r) => `⌛ <b>Muddat o'tdi</b> — yopilmadi, hozirgi natija ${r >= 0 ? "+" : ""}${r.toFixed(2)}R`,
 };
 
@@ -218,11 +152,13 @@ function buildStatusMessage(doc: FqSignalDoc, status: SignalStatus, resultR: num
   const builder = STATUS_MESSAGES[status];
   if (!builder) return null;
   const label =
-    doc.strategy === "st_day"
-      ? "Day 15M"
-      : doc.strategy === "smc_4h"
+    doc.strategy === "smc_4h"
         ? "SMC 4H"
-        : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId].label;
+        : doc.strategy === "smc_5m"
+          ? "SMC 5M"
+          : doc.strategy === "smc_mtf"
+            ? MTF_LABEL
+          : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId].label;
   const head = `${doc.side === "long" ? "LONG" : "SHORT"} · ${escapeHtml(pairLabel(doc.symbol))} · ${escapeHtml(label)}`;
   return `${builder(resultR ?? 0)}\n<i>${head}</i>`;
 }
@@ -247,50 +183,25 @@ async function sentTodayCount(strategy: StrategyId): Promise<number> {
   });
 }
 
-async function updateDaySignal(doc: FqSignalDoc): Promise<{ status: SignalStatus; resultR: number | null; closedAt: number | null }> {
-  const signalTime = doc.signalTime.getTime();
-  const candles = (
-    await getKlinesRange(
-      doc.symbol,
-      DAY_CONFIG.interval,
-      signalTime - DAY_WARMUP_BARS * DAY_BAR_MS,
-      Date.now(),
-      doc.marketType as "spot" | "futures",
-    )
-  ).filter((c) => c.closeTime <= Date.now());
-  return evaluateDayOutcome(
-    { side: doc.side as "long" | "short", entry: doc.entry, stopLoss: doc.stopLoss, signalTime },
-    candles,
-  );
-}
-
 /** Ochiq signallarni TP1/TP2/SL bo'yicha yangilaydi va o'zgarishni Telegramga reply qiladi. */
 async function updateOpenSignals(errors: string[]): Promise<number> {
-  const open = await FqSignal.find({ status: { $in: ["open", "tp1"] } }).limit(50);
+  const open = await FqSignal.find({
+    status: { $in: ["open", "tp1"] },
+    strategy: { $nin: [...LEGACY_STRATEGY_IDS] },
+  }).limit(50);
   let updated = 0;
 
   for (const doc of open) {
     try {
-      if (doc.strategy === "st_day") {
-        const outcome = await updateDaySignal(doc);
-        if (outcome.status === doc.status) continue;
-        doc.status = outcome.status;
-        doc.resultR = outcome.resultR;
-        doc.closedAt = outcome.closedAt ? new Date(outcome.closedAt) : null;
-        await doc.save();
-        updated += 1;
-        if (doc.telegramMessageId && telegramActive()) {
-          const text = buildStatusMessage(doc, outcome.status, outcome.resultR);
-          if (text) await sendTelegramMessage(text, { replyTo: doc.telegramMessageId });
-        }
-        continue;
-      }
-
       // SMC: savdo limit to'lgan shamdan keyin boshlanadi; FQ: signal shamidan keyin.
       const { interval, intervalMs } =
         doc.strategy === "smc_4h"
           ? { interval: SMC_INTERVAL, intervalMs: SMC_INTERVAL_MS }
-          : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId];
+          : doc.strategy === "smc_5m"
+            ? { interval: CHECKER_INTERVAL, intervalMs: CHECKER_INTERVAL_MS }
+            : doc.strategy === "smc_mtf"
+              ? { interval: MTF_INTERVAL, intervalMs: MTF_INTERVAL_MS }
+            : FQ_PROFILES[(doc.strategy ?? "fq_v3") as FqStrategyId];
       const start = (doc.filledAt ?? doc.signalTime).getTime() + intervalMs;
       const end = Math.min(Date.now(), start + SIGNAL_MAX_BARS * intervalMs);
       const candles = (
@@ -338,7 +249,6 @@ async function updateOpenSignals(errors: string[]): Promise<number> {
 /** Yoqilgan swing profillari (har biri alohida strategiya, alohida limit). */
 function enabledFqProfiles(): FqProfile[] {
   const list: FqProfile[] = [];
-  if (env.FQ_15M_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_15m);
   if (env.FQ_1H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_v3);
   if (env.FQ_4H_SIGNALS_ENABLED) list.push(FQ_PROFILES.fq_4h);
   return list;
@@ -426,7 +336,8 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
   const runs: { id: string; run: () => Promise<{ scanned: number; newSignals: number; sent: number }> }[] = [
     ...enabledFqProfiles().map((profile) => ({ id: profile.label, run: () => runFqSignals(profile, errors) })),
     ...(env.SMC_4H_SIGNALS_ENABLED ? [{ id: "SMC 4H", run: () => runSmcSignals(errors) }] : []),
-    ...(env.DAY_SIGNALS_ENABLED ? [{ id: "Day trade", run: () => runDaySignals(errors) }] : []),
+    ...(env.SMC_5M_SIGNALS_ENABLED ? [{ id: "SMC 5M", run: () => runCheckerSignals(errors) }] : []),
+    ...(env.MTF_SIGNALS_ENABLED ? [{ id: MTF_LABEL, run: () => runMtfSignals(errors) }] : []),
     ...(env.MOMENTUM_SIGNALS_ENABLED
       ? [
           {
@@ -460,6 +371,11 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
   } catch (error) {
     errors.push(`SMC pending: ${error instanceof Error ? error.message : String(error)}`);
   }
+  try {
+    updated += await updatePendingMtf(errors);
+  } catch (error) {
+    errors.push(`${MTF_LABEL} pending: ${error instanceof Error ? error.message : String(error)}`);
+  }
   updated += await updateOpenSignals(errors);
 
   return {
@@ -470,67 +386,6 @@ export async function runSignalCycle(): Promise<SignalRunResult> {
     errors,
     ranAt: new Date().toISOString(),
   };
-}
-
-/** Day trade: yopilgan oxirgi 15M shamda Supertrend 1H trend tomonga o'girilgan coinlar. */
-async function runDaySignals(errors: string[]): Promise<{ scanned: number; newSignals: number; sent: number }> {
-  const scan = await runDayScan(env.TELEGRAM_SIGNAL_MARKET, { fresh: true });
-  const regime = await getRegimeGate("st_day", env.TELEGRAM_SIGNAL_MARKET, errors);
-  const fresh = scan.coins.filter(
-    (c) =>
-      c.verdict === "enter" &&
-      c.flipBarsAgo === 0 &&
-      c.signalTime !== null &&
-      c.side !== null &&
-      regime.allows(c.side, c.symbol),
-  );
-  const openSymbols = new Set(
-    (await FqSignal.find({ strategy: "st_day", status: "open" }, { symbol: 1 })).map((d) => d.symbol),
-  );
-
-  let newSignals = 0;
-  let sent = 0;
-  let dailyLeft = env.TELEGRAM_MAX_SIGNALS_PER_DAY - (await sentTodayCount("st_day"));
-
-  for (const coin of fresh) {
-    if (openSymbols.has(coin.symbol)) continue;
-    // 4H EMA50/200 savdoga qarshi bo'lmasin.
-    if (!(await mtfAllows("st_day", coin.symbol, coin.side as "long" | "short", coin.marketType, errors))) continue;
-    let doc: FqSignalDoc;
-    try {
-      doc = await FqSignal.create({
-        strategy: "st_day",
-        symbol: coin.symbol,
-        marketType: coin.marketType,
-        side: coin.side as "long" | "short",
-        setup: null,
-        signalTime: new Date(coin.signalTime!),
-        entry: coin.entry,
-        stopLoss: coin.stopLoss,
-        tp1: null,
-        tp2: null,
-        score: 0,
-      });
-    } catch (error) {
-      if (isDuplicateKey(error)) continue;
-      errors.push(`Day ${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
-      continue;
-    }
-    newSignals += 1;
-    openSymbols.add(coin.symbol);
-
-    if (!telegramActive() || sent >= env.TELEGRAM_MAX_SIGNALS_PER_RUN || dailyLeft <= 0) continue;
-    try {
-      const messageId = await sendDaySignal(coin, regime.summary);
-      await FqSignal.updateOne({ _id: doc._id }, { telegramMessageId: messageId });
-      sent += 1;
-      dailyLeft -= 1;
-    } catch (error) {
-      errors.push(`Telegram day ${coin.symbol}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  return { scanned: scan.scanned, newSignals, sent };
 }
 
 // ───────────── Tarix ─────────────
@@ -561,7 +416,7 @@ export async function getSignalHistory(
   limit: number = 100,
   strategy?: StrategyId,
 ): Promise<SignalsResponse> {
-  const docs = await FqSignal.find(strategy ? strategyFilter(strategy) : {}).sort({ signalTime: -1 }).limit(limit);
+  const docs = await FqSignal.find(strategy ? strategyFilter(strategy) : { strategy: { $nin: [...LEGACY_STRATEGY_IDS] } }).sort({ signalTime: -1 }).limit(limit);
   const signals = docs.map(toRecord);
   const closed = signals.filter((s) => s.resultR !== null);
   const wins = closed.filter((s) => (s.resultR ?? 0) > 0).length;
@@ -591,15 +446,15 @@ export async function sendTestTelegramMessage(): Promise<void> {
     [
       "🔔 <b>FQ Signals — test xabari</b>",
       "Bot ulangan. Signal chiqqanda shu yerga xabar keladi:",
-      "• Day 15M (FQ v3, day rejim) — kirish, stop, TP1/TP2",
       "• Swing 1H (FQ v3) — kirish, stop, TP1/TP2",
       "• Swing 4H (FQ v3 + Fib) — kirish, stop, TP1/TP2",
       "• SMC 4H — BOS + Fib 0.618 limit order (to'ldi / bekor xabari bilan)",
-      "• Day trade (Supertrend 15M) — kirish, stop, chiqish flipda",
+      "• SMC 5M — 4H trend + liquidity sweep + zona + 5m CHoCH/BOS, R:R ≥ 2 (6 qoida tekshiruvi)",
+      "• SMC MTF — 4H trend → 1H FVG/OB + sweep → 5m CHoCH, retest limit (to'ldi / bekor xabari bilan)",
       "• Momentum portfeli — har dushanba long/short savat (market-neutral)",
       "Barcha signallar bozor rejimi (BTC / TOTAL3 / BTC.D) va yuqori timeframe bilan filtrlanadi.",
       "SMC signallarida model ehtimoli ko'rsatiladi; har signalga AI izohi reply bo'lib keladi.",
-      "Natijalar (TP/SL/chiqish) asl xabarga reply sifatida keladi.",
+      "Natijalar (TP/SL) asl xabarga reply sifatida keladi.",
     ].join("\n"),
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, History, Radar, Settings, type LucideIcon } from "lucide-react";
+import { BookOpen, Cpu, History, Radar, Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Skaner", icon: Radar },
   { href: "/signals", label: "Signallar", icon: History },
+  { href: "/engine", label: "Engine v2", icon: Cpu },
   { href: "/guide", label: "Qo'llanma", icon: BookOpen },
   { href: "/settings", label: "Sozlamalar", icon: Settings },
 ];

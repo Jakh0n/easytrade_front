@@ -5,18 +5,17 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { backtestDay, backtestFq, type BacktestTrade } from "./fq-backtest";
+import { backtestFq, type BacktestTrade } from "./fq-backtest";
 import { SMC_CONFIG, backtestSmc } from "./smc-backtest";
 import { FQ_PROFILES } from "../services/fq.strategy.service";
 import { REGIME_FILTERS } from "../services/market-regime.service";
 import { REGIME_ALT_BASKET, computeRegime, regimeAllows, regimeAt, type RegimeBar } from "../services/market-regime/engine";
-import { DAY_SYMBOLS } from "../services/day.strategy.service";
 import { SMC_SYMBOLS } from "../services/smc.service";
 import { MAX_KLINES_PER_REQUEST, getKlinesRange } from "../services/binance.service";
 import type { Candle, StrategyId } from "../types/index";
 
 export const CACHE_DIR = path.join(process.cwd(), ".cache", "backtest");
-export const INTERVAL_MS: Record<string, number> = { "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000 };
+export const INTERVAL_MS: Record<string, number> = { "5m": 300_000, "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000 };
 
 export const CORE_20 = [
   "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT",
@@ -99,17 +98,12 @@ export interface LiveSpec {
   run: (symbol: string, candles: Candle[], htf: Candle[], filter?: (side: "long" | "short", t: number) => boolean) => BacktestTrade[];
 }
 
-const fqRun = (id: "fq_15m" | "fq_v3" | "fq_4h") => (symbol: string, candles: Candle[], htf: Candle[], filter?: (s: "long" | "short", t: number) => boolean) =>
+const fqRun = (id: "fq_v3" | "fq_4h") => (symbol: string, candles: Candle[], htf: Candle[], filter?: (s: "long" | "short", t: number) => boolean) =>
   backtestFq(symbol, candles, htf, { config: FQ_PROFILES[id].config, filter });
 
 export const LIVE_SPECS: LiveSpec[] = [
-  { id: "fq_15m", tf: "15m", htf: FQ_PROFILES.fq_15m.htfInterval, days: 365, symbols: CORE_20, run: fqRun("fq_15m") },
   { id: "fq_v3", tf: "1h", htf: FQ_PROFILES.fq_v3.htfInterval, days: 730, symbols: CORE_20, run: fqRun("fq_v3") },
   { id: "fq_4h", tf: "4h", htf: FQ_PROFILES.fq_4h.htfInterval, days: 1095, symbols: FQ_PROFILES.fq_4h.symbols ?? CORE_20, run: fqRun("fq_4h") },
-  {
-    id: "st_day", tf: "15m", htf: "1h", days: 365, symbols: DAY_SYMBOLS,
-    run: (symbol, candles, htf, filter) => backtestDay(symbol, candles, htf, { filter }),
-  },
   {
     id: "smc_4h", tf: "4h", htf: "1d", days: 1095, symbols: SMC_SYMBOLS,
     run: (symbol, candles, htf, filter) => {
