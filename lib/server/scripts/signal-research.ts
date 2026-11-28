@@ -187,7 +187,7 @@ function mtfSeries(candles: Candle[]): { t: number; above50: number; stack: numb
   }));
 }
 
-const MTF_TF: Partial<Record<string, string>> = { fq_15m: "1h", st_day: "4h", fq_v3: "1d", fq_4h: "1d", smc_4h: "1d" };
+const MTF_TF: Partial<Record<string, string>> = { fq_v3: "1d", fq_4h: "1d", smc_4h: "1d" };
 
 async function mtfStudy(): Promise<void> {
   for (const spec of LIVE_SPECS) {

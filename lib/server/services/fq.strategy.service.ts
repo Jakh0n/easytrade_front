@@ -1,6 +1,5 @@
 import { getKlines } from "./binance.service";
 import {
-  FQ_15M_CONFIG,
   FQ_4H_CONFIG,
   FQ_SWING_CONFIG,
   computeFqLevels,
@@ -42,15 +41,6 @@ export interface FqProfile {
 }
 
 export const FQ_PROFILES: Record<FqStrategyId, FqProfile> = {
-  fq_15m: {
-    id: "fq_15m",
-    interval: "15m",
-    htfInterval: "4h",
-    intervalMs: 15 * 60_000,
-    config: FQ_15M_CONFIG,
-    label: "Day 15M · FQ v3",
-    symbols: null,
-  },
   fq_v3: {
     id: "fq_v3",
     interval: "1h",

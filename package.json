@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "jest",
     "test:server": "jest lib/server/__tests__",
-    "backtest": "tsx lib/server/scripts/run-backtest.ts"
+    "backtest": "tsx lib/server/scripts/run-backtest.ts",
+    "backtest:engine": "tsx lib/server/scripts/engine-backtest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

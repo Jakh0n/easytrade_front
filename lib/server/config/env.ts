@@ -27,22 +27,26 @@ const envSchema = z.object({
   TELEGRAM_SIGNAL_MARKET: z.enum(["spot", "futures"]).default("futures"),
   TELEGRAM_MAX_SIGNALS_PER_RUN: z.coerce.number().min(1).max(20).default(5),
   TELEGRAM_MAX_SIGNALS_PER_DAY: z.coerce.number().min(1).max(100).default(20),
-  /** Day trade (Supertrend 15M) signallari — signal siklida FQ v3 bilan birga ishlaydi. */
-  DAY_SIGNALS_ENABLED: boolFromEnv(true),
-  /** Day 15M (FQ v3, Pine "Day trading rejimi") signallari. */
-  FQ_15M_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 1H (FQ v3) signallari. */
   FQ_1H_SIGNALS_ENABLED: boolFromEnv(true),
   /** Swing 4H + Fib signallari. */
   FQ_4H_SIGNALS_ENABLED: boolFromEnv(true),
   /** SMC 4H: BOS + Fib 0.618 limit order. */
   SMC_4H_SIGNALS_ENABLED: boolFromEnv(true),
+  /** SMC 5M signal tekshiruvchi: 4H trend + sweep + zona + 5m CHoCH/BOS, R:R ≥ 2 (har siklda). */
+  SMC_5M_SIGNALS_ENABLED: boolFromEnv(true),
+  /** SMC MTF: 4H trend → 1H FVG/OB + sweep → 5m CHoCH, 5m retest limit (kuniga ≤ 3 ta). */
+  MTF_SIGNALS_ENABLED: boolFromEnv(true),
   /** Haftalik momentum savati (market-neutral, dushanba UTC). */
   MOMENTUM_SIGNALS_ENABLED: boolFromEnv(true),
   /** Bozor rejimi filtri (BTC / TOTAL3 / BTC.D proxy) — strategiyaga mos bo'lmagan tomondagi signallar yuborilmaydi. */
   MARKET_REGIME_FILTER_ENABLED: boolFromEnv(true),
   /** Yuqori timeframe tasdig'i va SMC ehtimollik modeli (backtest bilan tanlangan). */
   SIGNAL_QUALITY_FILTERS_ENABLED: boolFromEnv(true),
+  /** Signal engine v2 (`lib/server/signal-engine`): /api/engine/run does nothing when false. */
+  ENGINE_SIGNALS_ENABLED: boolFromEnv(true),
+  /** Engine v2 → Telegram. Off by default: signals are saved to the DB until the backtest is reviewed. */
+  ENGINE_TELEGRAM_ENABLED: boolFromEnv(false),
   /** ChatGPT izohi: signal yuborilgach unga reply sifatida qisqa tahlil (filtr emas). Kalit bo'lmasa o'chiq. */
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-5.5"),

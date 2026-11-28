@@ -3,15 +3,15 @@
  * filtrli natijalarni solishtiradi. Train = vaqt bo'yicha birinchi 70%, test = oxirgi 30%.
  *
  *   npx tsx lib/server/scripts/regime-backtest.ts
- *   npx tsx lib/server/scripts/regime-backtest.ts --strategies fq_15m,fq_v3 --ema 200
+ *   npx tsx lib/server/scripts/regime-backtest.ts --strategies fq_v3,fq_4h --ema 200
  *
  * Shamlar `.cache/backtest/` dan olinadi (yo'q bo'lsa Binance'dan yuklanadi).
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { backtestDay, backtestFq, summarize, type BacktestStats, type BacktestTrade } from "../backtest/fq-backtest";
+import { backtestFq, summarize, type BacktestStats, type BacktestTrade } from "../backtest/fq-backtest";
 import { SMC_CONFIG, backtestSmc } from "../backtest/smc-backtest";
-import { FQ_15M_CONFIG, FQ_4H_CONFIG, FQ_SWING_CONFIG, type FqConfig } from "../services/fq-strategy/engine";
+import { FQ_4H_CONFIG, FQ_SWING_CONFIG, type FqConfig } from "../services/fq-strategy/engine";
 import {
   REGIME_ALT_BASKET,
   REGIME_RULES,
@@ -31,7 +31,6 @@ const CORE_20 = [
   "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT",
   "LTCUSDT", "BCHUSDT", "NEARUSDT", "UNIUSDT", "AAVEUSDT", "ATOMUSDT", "FILUSDT", "ETCUSDT", "SUIUSDT", "TRXUSDT",
 ];
-const DAY_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SUIUSDT"];
 const SMC_SYMBOLS = [
   ...CORE_20, "APTUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "TIAUSDT", "SEIUSDT", "ICPUSDT", "HBARUSDT", "XLMUSDT", "ALGOUSDT",
   "VETUSDT", "SANDUSDT", "AXSUSDT", "GALAUSDT", "CRVUSDT", "LDOUSDT", "RUNEUSDT", "STXUSDT", "IMXUSDT", "GRTUSDT",
@@ -52,13 +51,8 @@ const fq = (config: FqConfig) => (symbol: string, candles: Candle[], htf: Candle
   backtestFq(symbol, candles, htf, { config, filter });
 
 const STRATEGIES: StrategySpec[] = [
-  { id: "fq_15m", tf: "15m", htf: "1h", days: 365, symbols: CORE_20, regimeTfs: ["1h", "4h"], run: fq(FQ_15M_CONFIG) },
   { id: "fq_v3", tf: "1h", htf: "4h", days: 730, symbols: CORE_20, regimeTfs: ["4h", "1h"], run: fq(FQ_SWING_CONFIG) },
   { id: "fq_4h", tf: "4h", htf: "1d", days: 1095, symbols: CORE_20, regimeTfs: ["1d", "4h"], run: fq(FQ_4H_CONFIG) },
-  {
-    id: "st_day", tf: "15m", htf: "1h", days: 365, symbols: DAY_SYMBOLS, regimeTfs: ["1h", "4h"],
-    run: (symbol, candles, htf, filter) => backtestDay(symbol, candles, htf, { filter }),
-  },
   {
     // SMC: setup yaratilgan shamda filtr (post-hoc) — kutilayotgan orderni almashtirish dinamikasi biroz farq qiladi.
     id: "smc_4h", tf: "4h", htf: "1d", days: 1095, symbols: SMC_SYMBOLS, regimeTfs: ["1d", "4h"],

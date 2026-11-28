@@ -12,12 +12,10 @@ import type { Candle, MarketType, StrategyId } from "../types/index";
  * (train va test davrlarining ikkalasida yaxshilagan variantlar):
  * - "stack":      yuqori TF'da close va EMA50 — EMA200 ning savdo tomonida;
  * - "notAgainst": yuqori TF EMA50/200 savdoga qarshi tartibda emas (neytral ham o'tadi).
- * FQ 15M'da sezilarli ta'sir bo'lmadi — qo'llanmaydi.
  */
 export const MTF_RULES: Partial<Record<StrategyId, { tf: string; rule: "stack" | "notAgainst" }>> = {
   fq_v3: { tf: "1d", rule: "stack" },
   fq_4h: { tf: "1d", rule: "stack" },
-  st_day: { tf: "4h", rule: "notAgainst" },
   smc_4h: { tf: "1d", rule: "stack" },
 };
 

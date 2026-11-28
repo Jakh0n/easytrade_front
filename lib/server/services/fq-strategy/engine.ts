@@ -106,27 +106,6 @@ export const FQ_SWING_CONFIG: FqConfig = {
  */
 export const FQ_4H_CONFIG: FqConfig = { ...FQ_SWING_CONFIG, useFibZone: true };
 
-/**
- * Day 15M: Pine'dagi "⚡ Day trading rejimi" asosida, backtest bilan sozlangan (katta TF 4H EMA200).
- *
- * Pine'ning asl sozlamalari (stop 1–2.5 ATR, ADX 22, breakout ham) 15M da xarajatga yeyilardi:
- * stop tor bo'lgani uchun 0.14% round-trip har savdoga ~0.23R xarajat — natija −0.20R (train) / −0.06R (test).
- * Stop kamida 2.5 ATR, ADX ≥ 25, faqat pullback: xarajat ~0.12R, win rate 53% / 59%,
- * natija −0.05R (train) / +0.11R (test). 20 coin, 1 yil, bozor rejimi filtri (BTC + TOTAL3 4H) bilan.
- */
-export const FQ_15M_CONFIG: FqConfig = {
-  ...FQ_SWING_CONFIG,
-  useBreakout: false,
-  adxMin: 25,
-  extMaxAtr: 1.5,
-  swingLen: 8,
-  minRiskAtr: 2.5,
-  maxRiskAtr: 4.0,
-  tp1R: 1.0,
-  tp2R: 2.0,
-  riskPct: 0.75,
-};
-
 export type FqHtfBias = "bullish" | "bearish" | null;
 export type FqSetup = "pullback" | "breakout" | "sweep";
 

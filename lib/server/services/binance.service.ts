@@ -217,6 +217,19 @@ export async function getFundingRateRange(
   }
 }
 
+/** Joriy (keyingi settlement uchun) funding rate, kasr ko'rinishida: 0.0001 = 0.01%. */
+export async function getCurrentFundingRate(symbol: string): Promise<number> {
+  try {
+    const { data } = await axios.get<{ lastFundingRate: string }>(
+      `${FUTURES_BASE_URL}/fapi/v1/premiumIndex`,
+      { params: { symbol: symbol.toUpperCase() }, timeout: 10_000 },
+    );
+    return Number(data.lastFundingRate);
+  } catch (error) {
+    handleBinanceError(error);
+  }
+}
+
 export async function get24hrTicker(
   symbol: string,
   marketType: MarketType = "spot",
@@ -291,6 +304,37 @@ export async function getCryptoFuturesSymbols(): Promise<Set<string>> {
     return symbols;
   } catch (error) {
     if (cryptoSymbolsCache) return cryptoSymbolsCache.data;
+    handleBinanceError(error);
+  }
+}
+
+/** Open-interest history (futures). `period` e.g. "5m" | "15m" | "1h"; Binance keeps only the last 30 days. */
+export async function getOpenInterestHist(
+  symbol: string,
+  period: string,
+  limit: number = 100,
+  range: { startTime?: number; endTime?: number } = {},
+): Promise<{ time: number; oi: number }[]> {
+  try {
+    const { data } = await axios.get<{ sumOpenInterest: string; timestamp: number }[]>(
+      `${FUTURES_BASE_URL}/futures/data/openInterestHist`,
+      { params: { symbol: symbol.toUpperCase(), period, limit, ...range }, timeout: 10_000 },
+    );
+    return data.map((x) => ({ time: x.timestamp, oi: Number(x.sumOpenInterest) })).sort((a, b) => a.time - b.time);
+  } catch (error) {
+    handleBinanceError(error);
+  }
+}
+
+/** Current funding rate for every futures symbol in one request (weight 10). */
+export async function getAllFundingRates(): Promise<Map<string, number>> {
+  try {
+    const { data } = await axios.get<{ symbol: string; lastFundingRate: string }[]>(
+      `${FUTURES_BASE_URL}/fapi/v1/premiumIndex`,
+      { timeout: 10_000 },
+    );
+    return new Map(data.map((x) => [x.symbol, Number(x.lastFundingRate)]));
+  } catch (error) {
     handleBinanceError(error);
   }
 }

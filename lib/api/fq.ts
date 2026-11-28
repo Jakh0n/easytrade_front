@@ -1,6 +1,5 @@
 import { apiFetch } from "./client";
 import type {
-  DayScanResponse,
   FqAnalysis,
   FqScanResponse,
   MarketType,
@@ -26,16 +25,6 @@ export function fetchFqAnalysis(
   return apiFetch<FqAnalysis>("/api/fq/analyze", {
     auth: true,
     query: { symbol, marketType },
-  });
-}
-
-export function fetchDayScan(
-  marketType: MarketType = "futures",
-  refresh = false,
-): Promise<DayScanResponse> {
-  return apiFetch<DayScanResponse>("/api/day/scan", {
-    auth: true,
-    query: { marketType, refresh: refresh ? "1" : undefined },
   });
 }
 
